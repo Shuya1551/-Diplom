@@ -14,7 +14,7 @@ load_dotenv()
 # Параметры подключения из переменных окружения или значения по умолчанию
 DB_NAME = os.getenv("DB_NAME", "news_generator_db")
 DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")  # замените на ваш пароль
+DB_PASSWORD = os.getenv("DB_PASSWORD", "0")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
