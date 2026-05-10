@@ -7,6 +7,8 @@ import tkinter as tk
 from tkinter import messagebox
 from database.db_connection import init_connection_pool, close_all_connections
 from gui.login_dialog import LoginWindow
+from gui.plans_list_window import PlansListWindow
+from gui.plan_edit_dialog import PlanEditDialog
 
 class Application:
     def __init__(self, root, user_data):
@@ -58,12 +60,19 @@ class Application:
 
         self.root.config(menu=menubar)
 
-    # Заглушки
     def show_plans_list(self):
-        messagebox.showinfo("Планы", "Список планов будет здесь")
+        PlansListWindow(self.root, self.user_data, refresh_callback=self.refresh_plans_list)
 
     def new_plan(self):
-        messagebox.showinfo("Новый план", "Форма создания плана")
+        dialog = PlanEditDialog(self.root, plan_id=None, user_data=self.user_data)
+        self.root.wait_window(dialog.window)
+        self.refresh_plans_list()
+
+    def refresh_plans_list(self):
+        # метод нужен для колбэка
+        pass
+
+    # Заглушки
 
     def generate_news(self):
         messagebox.showinfo("Генерация", "Окно генерации новости")
