@@ -9,9 +9,10 @@ from repositories.event_plan_repository import get_all_event_plans, delete_event
 from gui.plan_edit_dialog import PlanEditDialog
 
 class PlansListWindow:
-    def __init__(self, parent, user_data, refresh_callback=None):
+    def __init__(self, parent, user_data, news_generator, refresh_callback=None):
         self.parent = parent
         self.user_data = user_data
+        self.news_generator = news_generator
         self.refresh_callback = refresh_callback
         self.window = tk.Toplevel(parent)
         self.window.title("Список планов мероприятий")
@@ -52,12 +53,10 @@ class PlansListWindow:
         self.load_data()
 
     def load_data(self):
-        """Загружает данные из БД в таблицу."""
         for row in self.tree.get_children():
             self.tree.delete(row)
         plans = get_all_event_plans()
         for plan in plans:
-            # plan: (id, title, event_date, event_time, location, description, speaker, audience, created_by, created_at)
             self.tree.insert("", tk.END, values=(
                 plan[0], plan[1], plan[2], str(plan[3]) if plan[3] else "", plan[4], plan[6]
             ))
@@ -68,7 +67,7 @@ class PlansListWindow:
             messagebox.showwarning("Предупреждение", "Выберите план из списка")
             return None
         values = self.tree.item(selected[0], "values")
-        return values[0]  # ID
+        return values[0]
 
     def edit_plan(self):
         plan_id = self.get_selected_plan_id()
@@ -76,8 +75,6 @@ class PlansListWindow:
             dialog = PlanEditDialog(self.window, plan_id, self.user_data)
             self.window.wait_window(dialog.window)
             self.load_data()
-            if self.refresh_callback:
-                self.refresh_callback()
 
     def delete_plan(self):
         plan_id = self.get_selected_plan_id()
@@ -85,11 +82,9 @@ class PlansListWindow:
             if messagebox.askyesno("Подтверждение", "Удалить выбранный план?"):
                 delete_event_plan(plan_id)
                 self.load_data()
-                if self.refresh_callback:
-                    self.refresh_callback()
 
     def generate_news(self):
         plan_id = self.get_selected_plan_id()
         if plan_id:
-            # Пока заглушка
-            messagebox.showinfo("Генерация", f"Будет сгенерирована новость для плана ID {plan_id}")
+            from gui.generation_dialog import GenerationDialog
+            GenerationDialog(self.window, plan_id, self.user_data, self.news_generator)

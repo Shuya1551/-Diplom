@@ -2,18 +2,19 @@
 Главный модуль приложения «Автоматическая генерация новостей из плана мероприятий».
 Запускает окно авторизации, затем главное окно.
 """
-
 import tkinter as tk
 from tkinter import messagebox
 from database.db_connection import init_connection_pool, close_all_connections
 from gui.login_dialog import LoginWindow
 from gui.plans_list_window import PlansListWindow
 from gui.plan_edit_dialog import PlanEditDialog
+from services.gpt_news_generator import GPTNewsGenerator  # Импортируем новый класс
 
 class Application:
-    def __init__(self, root, user_data):
+    def __init__(self, root, user_data, news_generator):
         self.root = root
         self.user_data = user_data
+        self.news_generator = news_generator
         self.root.title(f"Генератор новостей - {user_data['username']} ({user_data['role']})")
         self.root.geometry("800x600")
 
@@ -61,27 +62,20 @@ class Application:
         self.root.config(menu=menubar)
 
     def show_plans_list(self):
-        PlansListWindow(self.root, self.user_data, refresh_callback=self.refresh_plans_list)
+        PlansListWindow(self.root, self.user_data, self.news_generator)
 
     def new_plan(self):
-        dialog = PlanEditDialog(self.root, plan_id=None, user_data=self.user_data)
-        self.root.wait_window(dialog.window)
-        self.refresh_plans_list()
-
-    def refresh_plans_list(self):
-        # метод нужен для колбэка
-        pass
-
-    # Заглушки
+        PlanEditDialog(self.root, plan_id=None, user_data=self.user_data)
 
     def generate_news(self):
-        messagebox.showinfo("Генерация", "Окно генерации новости")
+        # Открываем список планов, где можно выбрать план для генерации
+        self.show_plans_list()
 
     def export_excel(self):
-        messagebox.showinfo("Excel", "Экспорт в Excel")
+        messagebox.showinfo("Excel", "Экспорт в Excel (будет реализовано позже)")
 
     def export_word(self):
-        messagebox.showinfo("Word", "Экспорт в Word")
+        messagebox.showinfo("Word", "Экспорт в Word (будет реализовано позже)")
 
     def about(self):
         messagebox.showinfo("О программе", "Автор: Головатый И.Н\nГруппа: Идс23Б\nГод: 2026")
@@ -102,16 +96,31 @@ def main():
     login_window = LoginWindow(login_root)
     login_root.mainloop()
 
-    # После закрытия окна входа
     if login_window.success and login_window.user_data:
-        # Создаём главное окно
+        # Показываем окно загрузки модели
+        loading_win = tk.Tk()
+        loading_win.title("Загрузка модели")
+        tk.Label(loading_win, text="Загрузка языковой модели ruGPT-3 Medium...\nЭто может занять 1-2 минуты.").pack(padx=20, pady=20)
+        loading_win.update()
+
+        try:
+            # Загружаем НОВУЮ GPT-модель из локальной папки
+            generator = GPTNewsGenerator()
+        except Exception as e:
+            loading_win.destroy()
+            messagebox.showerror("Ошибка", f"Не удалось загрузить модель:\n{str(e)}")
+            close_all_connections()
+            return
+
+        loading_win.destroy()
+
+        # Запускаем главное окно, передавая в него загруженный генератор
         root = tk.Tk()
-        app = Application(root, login_window.user_data)
+        app = Application(root, login_window.user_data, generator)
         root.mainloop()
     else:
         close_all_connections()
         print("Авторизация отменена, выход.")
-
 
 if __name__ == "__main__":
     main()
