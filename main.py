@@ -36,6 +36,8 @@ class Application:
 
         # 1. Файл
         file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Настройки", command=self.open_settings)
+        file_menu.add_separator()
         file_menu.add_command(label="Выход", command=self.exit_app)
         menubar.add_cascade(label="Файл", menu=file_menu)
 
@@ -89,6 +91,10 @@ class Application:
 
     def about(self):
         messagebox.showinfo("О программе", "Автор: Головатый И.Н\nГруппа: Идс23Б\nГод: 2026")
+
+    def open_settings(self):
+        from gui.settings_window import SettingsWindow
+        SettingsWindow(self.root, self.user_data)
 
     def exit_app(self):
         close_all_connections()
