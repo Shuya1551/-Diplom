@@ -80,10 +80,12 @@ class Application:
         NewsViewWindow(self.root, self.user_data)    
 
     def export_excel(self):
-        messagebox.showinfo("Excel", "Экспорт в Excel (будет реализовано позже)")
+        from gui.export_dialog import ExportDialog
+        ExportDialog(self.root, self.user_data, 'xlsx')
 
     def export_word(self):
-        messagebox.showinfo("Word", "Экспорт в Word (будет реализовано позже)")
+        from gui.export_dialog import ExportDialog
+        ExportDialog(self.root, self.user_data, 'docx')
 
     def about(self):
         messagebox.showinfo("О программе", "Автор: Головатый И.Н\nГруппа: Идс23Б\nГод: 2026")
