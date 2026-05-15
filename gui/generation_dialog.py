@@ -5,6 +5,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from repositories.event_plan_repository import get_event_plan_by_id
+from repositories.generated_news_repository import save_generated_news
 import threading
 
 class GenerationDialog:
@@ -18,6 +19,7 @@ class GenerationDialog:
         self.plan_id = plan_id
         self.user_data = user_data
         self.generator = news_generator
+        self.generated_text = ""  # сохраним сгенерированный текст
 
         # Интерфейс
         self.status_label = tk.Label(self.window, text="Подготовка к генерации...")
@@ -32,12 +34,12 @@ class GenerationDialog:
         btn_frame = tk.Frame(self.window)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
 
-        self.save_btn = tk.Button(btn_frame, text="Сохранить в БД", command=self.save_to_db, state=tk.DISABLED)
+        self.save_btn = tk.Button(btn_frame, text="💾 Сохранить в БД", command=self.save_to_db, state=tk.DISABLED)
         self.save_btn.pack(side=tk.RIGHT, padx=10)
 
-        tk.Button(btn_frame, text="Закрыть", command=self.window.destroy).pack(side=tk.RIGHT, padx=10)
+        tk.Button(btn_frame, text="❌ Закрыть", command=self.window.destroy).pack(side=tk.RIGHT, padx=10)
 
-        # Запускаем генерацию в потоке
+        # Запускаем генерацию
         self.window.after(100, self.start_generation)
 
     def start_generation(self):
@@ -72,9 +74,10 @@ class GenerationDialog:
 
             update_status("Генерация новости... (может занять до минуты)")
             generated_text = self.generator.generate_news(plan_dict)
+            self.generated_text = generated_text   # сохраняем для сохранения
 
             self.window.after(0, lambda: self.display_result(generated_text))
-            update_status("Генерация завершена.", stop_progress=True)
+            update_status("Генерация завершена. Нажмите «Сохранить в БД».", stop_progress=True)
             self.window.after(0, lambda: self.save_btn.config(state=tk.NORMAL))
 
         except Exception as e:
@@ -88,5 +91,21 @@ class GenerationDialog:
         self.text_area.config(state=tk.DISABLED)
 
     def save_to_db(self):
-        # TODO: реализовать сохранение в таблицу generated_news
-        messagebox.showinfo("Сохранение", "Сохранение в базу данных будет добавлено на следующем этапе.")
+        if not self.generated_text.strip():
+            messagebox.showwarning("Предупреждение", "Нет текста для сохранения")
+            return
+
+        try:
+            saved_id = save_generated_news(
+                event_plan_id=self.plan_id,
+                generated_text=self.generated_text,
+                user_id=self.user_data['id'],
+                rating=None
+            )
+            if saved_id:
+                messagebox.showinfo("Успех", f"Новость сохранена в БД (ID={saved_id})")
+                self.save_btn.config(state=tk.DISABLED)
+            else:
+                messagebox.showerror("Ошибка", "Не удалось сохранить новость (см. консоль)")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Исключение при сохранении:\n{str(e)}")

@@ -9,6 +9,7 @@ from gui.login_dialog import LoginWindow
 from gui.plans_list_window import PlansListWindow
 from gui.plan_edit_dialog import PlanEditDialog
 from services.gpt_news_generator import GPTNewsGenerator  # Импортируем новый класс
+from gui.news_view_window import NewsViewWindow
 
 class Application:
     def __init__(self, root, user_data, news_generator):
@@ -28,6 +29,7 @@ class Application:
             font=("Arial", 14)
         )
         lbl.pack(expand=True)
+  
 
     def create_menu(self):
         menubar = tk.Menu(self.root)
@@ -46,6 +48,8 @@ class Application:
         # 3. Генерация новостей
         gen_menu = tk.Menu(menubar, tearoff=0)
         gen_menu.add_command(label="Сгенерировать новость", command=self.generate_news)
+        gen_menu.add_separator()
+        gen_menu.add_command(label="Сохранённые новости", command=self.show_saved_news)
         menubar.add_cascade(label="Генерация", menu=gen_menu)
 
         # 4. Отчёты
@@ -70,6 +74,10 @@ class Application:
     def generate_news(self):
         # Открываем список планов, где можно выбрать план для генерации
         self.show_plans_list()
+
+    def show_saved_news(self):
+        from gui.news_view_window import NewsViewWindow
+        NewsViewWindow(self.root, self.user_data)    
 
     def export_excel(self):
         messagebox.showinfo("Excel", "Экспорт в Excel (будет реализовано позже)")
