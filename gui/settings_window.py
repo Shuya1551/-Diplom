@@ -113,7 +113,7 @@ class SettingsWindow:
 Год: 2026
 
 Используемые технологии:
-- Python 3.10+
+- Python 3.11+
 - PostgreSQL
 - tkinter (GUI)
 - transformers + ruGPT-3 Medium
@@ -146,7 +146,6 @@ class SettingsWindow:
     def save_all(self):
         # Сохраняем все настройки в БД
         set_setting("model_path", self.model_path_var.get(), self.user_data['id'])
-        set_setting("language", self.language_var.get(), self.user_data['id'])
         set_setting("temperature", str(self.temperature_var.get()), self.user_data['id'])
         set_setting("max_new_tokens", str(self.max_tokens_var.get()), self.user_data['id'])
         set_setting("top_k", str(self.top_k_var.get()), self.user_data['id'])

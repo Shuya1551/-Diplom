@@ -10,6 +10,7 @@ from gui.plans_list_window import PlansListWindow
 from gui.plan_edit_dialog import PlanEditDialog
 from services.gpt_news_generator import GPTNewsGenerator  # Импортируем новый класс
 from gui.news_view_window import NewsViewWindow
+from gui.admin_window import AdminWindow
 
 class Application:
     def __init__(self, root, user_data, news_generator):
@@ -40,6 +41,12 @@ class Application:
         file_menu.add_separator()
         file_menu.add_command(label="Выход", command=self.exit_app)
         menubar.add_cascade(label="Файл", menu=file_menu)
+
+        # Если пользователь admin, показываем меню Администрирование
+        if self.user_data.get('role') == 'admin':
+            admin_menu = tk.Menu(menubar, tearoff=0)
+            admin_menu.add_command(label="Панель администратора", command=self.open_admin_panel)
+            menubar.add_cascade(label="Администрирование", menu=admin_menu)
 
         # 2. Планы мероприятий
         plans_menu = tk.Menu(menubar, tearoff=0)
@@ -95,6 +102,9 @@ class Application:
     def open_settings(self):
         from gui.settings_window import SettingsWindow
         SettingsWindow(self.root, self.user_data)
+
+    def open_admin_panel(self):
+        AdminWindow(self.root, self.user_data)  
 
     def exit_app(self):
         close_all_connections()

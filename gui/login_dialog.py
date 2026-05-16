@@ -5,7 +5,7 @@
 
 import tkinter as tk
 from tkinter import messagebox
-from database.user_repository import authenticate_user
+from repositories.user_repository import authenticate_user
 
 class LoginWindow:
     def __init__(self, root):
