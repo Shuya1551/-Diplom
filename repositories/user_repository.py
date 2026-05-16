@@ -117,6 +117,20 @@ def update_user(user_id, email=None, role_id=None, is_active=None):
         if conn:
             return_connection(conn)
 
+def get_role_id_by_name(role_name):
+    """Возвращает ID роли по её имени (user, manager, admin)."""
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM roles WHERE name = %s", (role_name,))
+        row = cur.fetchone()
+        cur.close()
+        return row[0] if row else None
+    finally:
+        if conn:
+            return_connection(conn)
+
 def delete_user(user_id):
     """Удаляет пользователя."""
     conn = None
