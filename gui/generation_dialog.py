@@ -4,9 +4,11 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import time
+import threading
 from repositories.event_plan_repository import get_event_plan_by_id
 from repositories.generated_news_repository import save_generated_news
-import threading
+from repositories.log_repository import log_generation
 
 class GenerationDialog:
     def __init__(self, parent, plan_id, user_data, news_generator):
@@ -19,7 +21,9 @@ class GenerationDialog:
         self.plan_id = plan_id
         self.user_data = user_data
         self.generator = news_generator
-        self.generated_text = ""  # сохраним сгенерированный текст
+        self.generated_text = ""
+        self.start_time = None
+        self.prompt_text = ""
 
         # Интерфейс
         self.status_label = tk.Label(self.window, text="Подготовка к генерации...")
@@ -60,6 +64,8 @@ class GenerationDialog:
             plan_data_raw = get_event_plan_by_id(self.plan_id)
             if not plan_data_raw:
                 update_status("Ошибка: План мероприятия не найден.", stop_progress=True)
+                # Логируем ошибку
+                log_generation(self.plan_id, self.user_data['id'], "", "", False, "План не найден", 0)
                 return
 
             plan_dict = {
@@ -72,17 +78,37 @@ class GenerationDialog:
                 "audience": plan_data_raw[7],
             }
 
+            # Формируем промпт (как в генераторе)
+            title = plan_dict.get('title', 'мероприятие')
+            location = plan_dict.get('location', '')
+            description = plan_dict.get('description', '')
+            speaker = plan_dict.get('speaker', '')
+            self.prompt_text = (
+                f"<s>Сгенерируй новостное сообщение о мероприятии по плану:\n"
+                f"Название: {title}\nМесто: {location}\nО чём: {description}\nСпикер: {speaker}\n"
+                f"Новость:"
+            )
+
             update_status("Генерация новости... (может занять до минуты)")
+            self.start_time = time.time()
             generated_text = self.generator.generate_news(plan_dict)
-            self.generated_text = generated_text   # сохраняем для сохранения
+            inference_time = int((time.time() - self.start_time) * 1000)  # в мс
+
+            self.generated_text = generated_text
+
+            # Логируем успех
+            log_generation(self.plan_id, self.user_data['id'], self.prompt_text, generated_text, True, None, inference_time)
 
             self.window.after(0, lambda: self.display_result(generated_text))
             update_status("Генерация завершена. Нажмите «Сохранить в БД».", stop_progress=True)
             self.window.after(0, lambda: self.save_btn.config(state=tk.NORMAL))
 
         except Exception as e:
-            update_status(f"Ошибка: {str(e)}", stop_progress=True)
-            messagebox.showerror("Ошибка", f"Не удалось сгенерировать новость:\n{str(e)}")
+            error_msg = str(e)
+            update_status(f"Ошибка: {error_msg}", stop_progress=True)
+            inference_time = int((time.time() - self.start_time) * 1000) if self.start_time else 0
+            log_generation(self.plan_id, self.user_data['id'], self.prompt_text, "", False, error_msg, inference_time)
+            messagebox.showerror("Ошибка", f"Не удалось сгенерировать новость:\n{error_msg}")
 
     def display_result(self, text):
         self.text_area.config(state=tk.NORMAL)
