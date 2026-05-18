@@ -48,6 +48,7 @@ class PlansListWindow:
         tk.Button(btn_frame, text="Удалить", command=self.delete_plan).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Сгенерировать новость", command=self.generate_news).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Обновить", command=self.load_data).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Новый план", command=self.new_plan).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Закрыть", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
 
         self.load_data()
@@ -88,3 +89,9 @@ class PlansListWindow:
         if plan_id:
             from gui.generation_dialog import GenerationDialog
             GenerationDialog(self.window, plan_id, self.user_data, self.news_generator)
+    
+    def new_plan(self):
+        from gui.plan_edit_dialog import PlanEditDialog
+        dialog = PlanEditDialog(self.window, plan_id=None, user_data=self.user_data)
+        self.window.wait_window(dialog.window)
+        self.load_data()  # обновим список
