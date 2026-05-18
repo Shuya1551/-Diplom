@@ -12,6 +12,7 @@ from gui.news_view_window import NewsViewWindow
 from gui.export_dialog import ExportDialog
 from gui.settings_window import SettingsWindow
 from gui.admin_window import AdminWindow
+from gui.profile_window import ProfileWindow
 from services.gpt_news_generator import GPTNewsGenerator
 
 # Глобальная переменная для генератора (загружается один раз)
@@ -59,31 +60,36 @@ class Application:
         file_menu.add_command(label="Выход", command=self.exit_app)
         menubar.add_cascade(label="Файл", menu=file_menu)
 
-        # 2. Планы мероприятий
+        # 2. Профиль
+        user_menu = tk.Menu(menubar, tearoff=0)
+        user_menu.add_command(label="Личный кабинет", command=self.open_profile)
+        menubar.add_cascade(label="Профиль", menu=user_menu)
+
+        # 3. Планы мероприятий
         plans_menu = tk.Menu(menubar, tearoff=0)
         plans_menu.add_command(label="Список планов", command=self.show_plans_list)
         plans_menu.add_command(label="Новый план", command=self.new_plan)
         menubar.add_cascade(label="Планы", menu=plans_menu)
 
-        # 3. Генерация новостей
+        # 4. Генерация новостей
         gen_menu = tk.Menu(menubar, tearoff=0)
         gen_menu.add_command(label="Сгенерировать новость", command=self.generate_news)
         gen_menu.add_separator()
         gen_menu.add_command(label="Сохранённые новости", command=self.show_saved_news)
         menubar.add_cascade(label="Генерация", menu=gen_menu)
 
-        # 4. Отчёты
+        # 5. Отчёты
         reports_menu = tk.Menu(menubar, tearoff=0)
         reports_menu.add_command(label="Экспорт в Excel", command=self.export_excel)
         reports_menu.add_command(label="Экспорт в Word", command=self.export_word)
         menubar.add_cascade(label="Отчёты", menu=reports_menu)
 
-        # 5. Справка
+        # 6. Справка
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="О программе", command=self.about)
         menubar.add_cascade(label="Справка", menu=help_menu)
 
-        # 6. Администрирование (только для admin)
+        # 7. Администрирование (только для admin)
         if self.user_data.get('role') == 'admin':
             admin_menu = tk.Menu(menubar, tearoff=0)
             admin_menu.add_command(label="Панель администратора", command=self.open_admin_panel)
@@ -94,6 +100,10 @@ class Application:
     # ---------- Методы меню ----------
     def show_plans_list(self):
         PlansListWindow(self.root, self.user_data, self.news_generator)
+
+    def open_profile(self):
+        from gui.profile_window import ProfileWindow
+        ProfileWindow(self.root, self.user_data)    
 
     def new_plan(self):
         PlanEditDialog(self.root, plan_id=None, user_data=self.user_data)

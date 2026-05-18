@@ -183,3 +183,44 @@ def get_roles():
         if conn:
             return_connection(conn)
 
+def get_user_by_id(user_id):
+    """Возвращает словарь с данными пользователя по ID."""
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.username, u.email, r.name as role, u.is_active, u.created_at, u.last_login
+            FROM users u
+            JOIN roles r ON u.role_id = r.id
+            WHERE u.id = %s
+        """, (user_id,))
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            return {
+                'id': row[0],
+                'username': row[1],
+                'email': row[2],
+                'role': row[3],
+                'is_active': row[4],
+                'created_at': row[5],
+                'last_login': row[6]
+            }
+        return None
+    finally:
+        if conn:
+            return_connection(conn)
+
+def update_last_login(user_id):
+    """Обновляет время последнего входа пользователя."""
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = %s", (user_id,))
+        conn.commit()
+        cur.close()
+    finally:
+        if conn:
+            return_connection(conn)

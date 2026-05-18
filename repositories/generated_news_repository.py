@@ -80,6 +80,27 @@ def get_news_by_id(news_id):
         if conn:
             return_connection(conn)
 
+def get_news_by_user_id(user_id):
+    """Возвращает все новости, сгенерированные пользователем, с информацией о плане."""
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT gn.id, gn.generated_text, gn.generation_date, gn.is_approved, gn.rating,
+                   ep.title as plan_title
+            FROM generated_news gn
+            JOIN event_plans ep ON gn.event_plan_id = ep.id
+            WHERE gn.approved_by = %s
+            ORDER BY gn.generation_date DESC
+        """, (user_id,))
+        rows = cur.fetchall()
+        cur.close()
+        return rows
+    finally:
+        if conn:
+            return_connection(conn)
+
 def delete_generated_news(news_id):
     """Удаляет новость по ID."""
     conn = None

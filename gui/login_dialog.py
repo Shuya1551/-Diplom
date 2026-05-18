@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import messagebox
 import bcrypt
 from database.db_connection import get_connection, return_connection
-from repositories.user_repository import authenticate_user, create_user, get_role_id_by_name
+from repositories.user_repository import authenticate_user, create_user, get_role_id_by_name, update_last_login
 
 class LoginWindow:
     def __init__(self, root):
@@ -40,6 +40,7 @@ class LoginWindow:
         password = self.entry_password.get()
         user = authenticate_user(username, password)
         if user:
+            update_last_login(user['id'])
             self.user_data = user
             self.success = True
             self.root.destroy()
