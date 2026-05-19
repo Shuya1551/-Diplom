@@ -16,24 +16,24 @@ class PlansListWindow:
         self.refresh_callback = refresh_callback
         self.window = tk.Toplevel(parent)
         self.window.title("Список планов мероприятий")
-        self.window.geometry("900x500")
+        self.window.geometry("950x500")
         self.window.transient(parent)
         self.window.grab_set()
 
         # Таблица
-        self.tree = ttk.Treeview(self.window, columns=("ID", "Название", "Дата", "Время", "Место", "Спикер"), show="headings")
+        self.tree = ttk.Treeview(self.window, columns=("ID", "Название", "Дата", "Время", "Место", "Категория"), show="headings")
         self.tree.heading("ID", text="ID")
         self.tree.heading("Название", text="Название")
         self.tree.heading("Дата", text="Дата")
         self.tree.heading("Время", text="Время")
         self.tree.heading("Место", text="Место")
-        self.tree.heading("Спикер", text="Спикер")
+        self.tree.heading("Категория", text="Категория")
         self.tree.column("ID", width=40)
         self.tree.column("Название", width=200)
         self.tree.column("Дата", width=100)
         self.tree.column("Время", width=80)
         self.tree.column("Место", width=150)
-        self.tree.column("Спикер", width=150)
+        self.tree.column("Категория", width=150)
 
         scrollbar = ttk.Scrollbar(self.window, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -44,12 +44,12 @@ class PlansListWindow:
         btn_frame = tk.Frame(self.window)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
 
-        tk.Button(btn_frame, text="Редактировать", command=self.edit_plan).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Удалить", command=self.delete_plan).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Сгенерировать новость", command=self.generate_news).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Обновить", command=self.load_data).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Новый план", command=self.new_plan).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Закрыть", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
+        tk.Button(btn_frame, text="➕ Новый план", command=self.new_plan).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="✏ Редактировать", command=self.edit_plan).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="🗑 Удалить", command=self.delete_plan).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="📄 Сгенерировать новость", command=self.generate_news).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="🔄 Обновить", command=self.load_data).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="❌ Закрыть", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
 
         self.load_data()
 
@@ -57,6 +57,7 @@ class PlansListWindow:
         for row in self.tree.get_children():
             self.tree.delete(row)
         plans = get_all_event_plans()
+        # plans: (id, title, event_date, event_time, location, description, speaker, audience, created_by, created_at)
         for plan in plans:
             self.tree.insert("", tk.END, values=(
                 plan[0], plan[1], plan[2], str(plan[3]) if plan[3] else "", plan[4], plan[6]
@@ -69,6 +70,14 @@ class PlansListWindow:
             return None
         values = self.tree.item(selected[0], "values")
         return values[0]
+
+    def new_plan(self):
+        """Открывает диалог создания нового плана и обновляет таблицу."""
+        dialog = PlanEditDialog(self.window, plan_id=None, user_data=self.user_data)
+        self.window.wait_window(dialog.window)
+        self.load_data()
+        if self.refresh_callback:
+            self.refresh_callback()
 
     def edit_plan(self):
         plan_id = self.get_selected_plan_id()
@@ -89,9 +98,3 @@ class PlansListWindow:
         if plan_id:
             from gui.generation_dialog import GenerationDialog
             GenerationDialog(self.window, plan_id, self.user_data, self.news_generator)
-    
-    def new_plan(self):
-        from gui.plan_edit_dialog import PlanEditDialog
-        dialog = PlanEditDialog(self.window, plan_id=None, user_data=self.user_data)
-        self.window.wait_window(dialog.window)
-        self.load_data()  # обновим список

@@ -6,20 +6,20 @@
 from database.db_connection import get_connection, return_connection
 from datetime import date, time
 
-def create_event_plan(title, event_date, event_time, location, description, speaker, audience, created_by):
+def create_event_plan(title, event_date, event_time, event_end_time, location, description, speaker, audience, created_by):
     """
     Создаёт новый план мероприятия.
-    Возвращает ID созданной записи или None при ошибке.
+    Возвращает ID созданной записи или None.
     """
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO event_plans (title, event_date, event_time, location, description, speaker, audience, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO event_plans (title, event_date, event_time, event_end_time, location, description, speaker, audience, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (title, event_date, event_time, location, description, speaker, audience, created_by))
+        """, (title, event_date, event_time, event_end_time, location, description, speaker, audience, created_by))
         plan_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
@@ -65,7 +65,7 @@ def get_event_plan_by_id(plan_id):
         if conn:
             return_connection(conn)
 
-def update_event_plan(plan_id, title, event_date, event_time, location, description, speaker, audience):
+def update_event_plan(plan_id, title, event_date, event_time, event_end_time, location, description, speaker, audience):
     """Обновляет существующий план."""
     conn = None
     try:
@@ -73,9 +73,10 @@ def update_event_plan(plan_id, title, event_date, event_time, location, descript
         cur = conn.cursor()
         cur.execute("""
             UPDATE event_plans
-            SET title=%s, event_date=%s, event_time=%s, location=%s, description=%s, speaker=%s, audience=%s, updated_at=CURRENT_TIMESTAMP
+            SET title=%s, event_date=%s, event_time=%s, event_end_time=%s,
+                location=%s, description=%s, speaker=%s, audience=%s, updated_at=CURRENT_TIMESTAMP
             WHERE id=%s
-        """, (title, event_date, event_time, location, description, speaker, audience, plan_id))
+        """, (title, event_date, event_time, event_end_time, location, description, speaker, audience, plan_id))
         conn.commit()
         cur.close()
         return True
