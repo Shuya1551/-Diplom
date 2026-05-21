@@ -428,15 +428,31 @@ class PlanEditDialog:
         self.entry_title.insert(0, plan[1])
         if plan[2]:
             self.calendar_date.set_date(plan[2])
-        if plan[3]:
-            self.start_time.set(plan[3].strftime("%H:%M"))
-        if plan[4]:
-            self.end_time.set(plan[4].strftime("%H:%M"))
+
+        # Время начала (plan[3])
+        start_val = plan[3]
+        if start_val:
+            if hasattr(start_val, 'strftime'):
+                self.start_time.set(start_val.strftime("%H:%M"))
+            else:
+                time_str = str(start_val)
+                if ':' in time_str:
+                    self.start_time.set(time_str[:5])
+        # Время окончания (plan[4])
+        end_val = plan[4]
+        if end_val:
+            if hasattr(end_val, 'strftime'):
+                self.end_time.set(end_val.strftime("%H:%M"))
+            else:
+                time_str = str(end_val)
+                if ':' in time_str:
+                    self.end_time.set(time_str[:5])
+
         self.location_box.set(plan[5] or "")
         self.category_box.set(plan[7] or "")
         self.text_description.insert(tk.END, plan[6] or "")
         self.entry_audience.insert(0, plan[8] or "")
-
+        
     def _save(self):
         title = self.entry_title.get().strip()
         if not title:
@@ -449,18 +465,9 @@ class PlanEditDialog:
             return
         start_time_str = self.start_time.get()
         end_time_str = self.end_time.get()
-        start_time = None
-        end_time = None
-        try:
-            if start_time_str and start_time_str != "00:00":
-                start_time = datetime.strptime(start_time_str, "%H:%M").time()
-        except:
-            pass
-        try:
-            if end_time_str and end_time_str != "00:00":
-                end_time = datetime.strptime(end_time_str, "%H:%M").time()
-        except:
-            pass
+        # Не преобразуем в time, оставляем строки
+        start_time = start_time_str if start_time_str and start_time_str != "00:00" else None
+        end_time = end_time_str if end_time_str and end_time_str != "00:00" else None
         location = self.location_box.get() or None
         category = self.category_box.get() or None
         description = self.text_description.get("1.0", tk.END).strip() or None
@@ -479,7 +486,7 @@ class PlanEditDialog:
                 messagebox.showerror("Ошибка", "Неизвестный пользователь")
                 return
             new_id = create_event_plan(title, event_date, start_time, end_time,
-                                       location, description, category, audience, self.user_data["id"])
+                                    location, description, category, audience, self.user_data["id"])
             if new_id:
                 messagebox.showinfo("Успех", f"План создан с ID {new_id}")
                 self.window.destroy()

@@ -101,6 +101,26 @@ def get_news_by_user_id(user_id):
         if conn:
             return_connection(conn)
 
+def get_recent_news(limit=5):
+    """Возвращает последние сгенерированные новости с краткой информацией."""
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT gn.id, gn.generated_text, gn.generation_date, ep.title
+            FROM generated_news gn
+            LEFT JOIN event_plans ep ON gn.event_plan_id = ep.id
+            ORDER BY gn.generation_date DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        cur.close()
+        return rows
+    finally:
+        if conn:
+            return_connection(conn)
+
 def delete_generated_news(news_id):
     """Удаляет новость по ID."""
     conn = None
