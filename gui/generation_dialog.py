@@ -17,6 +17,7 @@ class GenerationDialog:
         self.window.geometry("600x400")
         self.window.transient(parent)
         self.window.grab_set()
+        self.running = True
 
         self.plan_id = plan_id
         self.user_data = user_data
@@ -26,7 +27,7 @@ class GenerationDialog:
         self.prompt_text = ""
 
         # Интерфейс
-        self.status_label = tk.Label(self.window, text="Подготовка к генерации...")
+        self.status_label = ttk.Label(self.window, text="Подготовка к генерации...")
         self.status_label.pack(pady=10)
 
         self.progress = ttk.Progressbar(self.window, mode='indeterminate')
@@ -41,22 +42,33 @@ class GenerationDialog:
         self.save_btn = tk.Button(btn_frame, text="💾 Сохранить в БД", command=self.save_to_db, state=tk.DISABLED)
         self.save_btn.pack(side=tk.RIGHT, padx=10)
 
-        tk.Button(btn_frame, text="❌ Закрыть", command=self.window.destroy).pack(side=tk.RIGHT, padx=10)
+        tk.Button(btn_frame, text="❌ Закрыть", command=self.close).pack(side=tk.RIGHT, padx=10)
 
-        # Запускаем генерацию
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.window.after(100, self.start_generation)
+
+    def close(self):
+        self.running = False
+        self.window.destroy()
 
     def start_generation(self):
         thread = threading.Thread(target=self.generate_news_thread)
+        thread.daemon = True
         thread.start()
 
     def generate_news_thread(self):
         def update_status(text, start_progress=False, stop_progress=False):
-            self.window.after(0, lambda: self.status_label.config(text=text))
-            if start_progress:
-                self.window.after(0, self.progress.start)
-            if stop_progress:
-                self.window.after(0, self.progress.stop)
+            if not self.running:
+                return
+            def _update():
+                if not self.running:
+                    return
+                self.status_label.config(text=text)
+                if start_progress:
+                    self.progress.start()
+                if stop_progress:
+                    self.progress.stop()
+            self.window.after(0, _update)
 
         try:
             update_status("Получение данных плана...", start_progress=True)
@@ -64,7 +76,6 @@ class GenerationDialog:
             plan_data_raw = get_event_plan_by_id(self.plan_id)
             if not plan_data_raw:
                 update_status("Ошибка: План мероприятия не найден.", stop_progress=True)
-                # Логируем ошибку
                 log_generation(self.plan_id, self.user_data['id'], "", "", False, "План не найден", 0)
                 return
 
@@ -78,7 +89,6 @@ class GenerationDialog:
                 "audience": plan_data_raw[7],
             }
 
-            # Формируем промпт (как в генераторе)
             title = plan_dict.get('title', 'мероприятие')
             location = plan_dict.get('location', '')
             description = plan_dict.get('description', '')
@@ -92,29 +102,31 @@ class GenerationDialog:
             update_status("Генерация новости... (может занять до минуты)")
             self.start_time = time.time()
             generated_text = self.generator.generate_news(plan_dict)
-            inference_time = int((time.time() - self.start_time) * 1000)  # в мс
+            inference_time = int((time.time() - self.start_time) * 1000)
 
             self.generated_text = generated_text
 
-            # Логируем успех
             log_generation(self.plan_id, self.user_data['id'], self.prompt_text, generated_text, True, None, inference_time)
 
-            self.window.after(0, lambda: self.display_result(generated_text))
-            update_status("Генерация завершена. Нажмите «Сохранить в БД».", stop_progress=True)
-            self.window.after(0, lambda: self.save_btn.config(state=tk.NORMAL))
+            def display():
+                if not self.running:
+                    return
+                self.text_area.config(state=tk.NORMAL)
+                self.text_area.delete("1.0", tk.END)
+                self.text_area.insert(tk.END, generated_text)
+                self.text_area.config(state=tk.DISABLED)
+                self.save_btn.config(state=tk.NORMAL)
+                update_status("Генерация завершена. Нажмите «Сохранить в БД».", stop_progress=True)
+
+            self.window.after(0, display)
 
         except Exception as e:
             error_msg = str(e)
             update_status(f"Ошибка: {error_msg}", stop_progress=True)
             inference_time = int((time.time() - self.start_time) * 1000) if self.start_time else 0
             log_generation(self.plan_id, self.user_data['id'], self.prompt_text, "", False, error_msg, inference_time)
-            messagebox.showerror("Ошибка", f"Не удалось сгенерировать новость:\n{error_msg}")
-
-    def display_result(self, text):
-        self.text_area.config(state=tk.NORMAL)
-        self.text_area.delete("1.0", tk.END)
-        self.text_area.insert(tk.END, text)
-        self.text_area.config(state=tk.DISABLED)
+            if self.running:
+                self.window.after(0, lambda: messagebox.showerror("Ошибка", f"Не удалось сгенерировать новость:\n{error_msg}"))
 
     def save_to_db(self):
         if not self.generated_text.strip():
