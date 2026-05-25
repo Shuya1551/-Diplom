@@ -5,7 +5,7 @@
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox, Menu
+from tkinter import Menu
 from datetime import datetime, date, timedelta
 import calendar
 import bcrypt
@@ -17,6 +17,10 @@ from repositories.user_repository import authenticate_user, create_user, get_rol
 from repositories.event_plan_repository import get_all_event_plans, delete_event_plan, get_event_plan_by_id, create_event_plan, update_event_plan
 from repositories.generated_news_repository import get_recent_news
 from services.gpt_news_generator import GPTNewsGenerator
+from gui.generation_frame import GenerationFrame
+from gui.generation_process_frame import GenerationProcessFrame
+from gui.news_view_frame import NewsViewFrame
+from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
 COLOR_PRIMARY = "#6C63FF"
@@ -37,7 +41,7 @@ def get_news_generator():
         try:
             _news_generator = GPTNewsGenerator()
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось загрузить модель:\n{str(e)}")
+            show_centered_dialog(None, "Ошибка", f"Не удалось загрузить модель:\n{str(e)}", "error")
             return None
     return _news_generator
 
@@ -293,7 +297,7 @@ class CalendarDropdown(ctk.CTkToplevel):
     def on_focus_out(self, event):
         self.destroy()
 
-# ---------- ВСПЛЫВАЮЩИЙ ВЫБОР ВРЕМЕНИ (С ВЕРТИКАЛЬНЫМИ КНОПКАМИ) ----------
+# ---------- ВСПЛЫВАЮЩИЙ ВЫБОР ВРЕМЕНИ ----------
 class TimePickerPopup(ctk.CTkToplevel):
     def __init__(self, parent, entry_widget, initial_hour=0, initial_minute=0, callback=None):
         super().__init__(parent)
@@ -319,7 +323,6 @@ class TimePickerPopup(ctk.CTkToplevel):
         main_frame = ctk.CTkFrame(self, fg_color="transparent")
         main_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-        # Часы
         hour_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         hour_frame.pack(side="left", expand=True, fill="both")
         ctk.CTkLabel(hour_frame, text="Часы", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
@@ -342,7 +345,6 @@ class TimePickerPopup(ctk.CTkToplevel):
 
         ctk.CTkLabel(main_frame, text=":", font=ctk.CTkFont(size=24)).pack(side="left", padx=10)
 
-        # Минуты
         minute_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         minute_frame.pack(side="left", expand=True, fill="both")
         ctk.CTkLabel(minute_frame, text="Минуты", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
@@ -428,7 +430,7 @@ class TimePickerPopup(ctk.CTkToplevel):
     def on_focus_out(self, event):
         self.destroy()
 
-# ---------- ВСПЛЫВАЮЩЕЕ ОКНО "О ПРОГРАММЕ" (СТРОГО ВНУТРИ ОКНА) ----------
+# ---------- ВСПЛЫВАЮЩЕЕ ОКНО "О ПРОГРАММЕ" ----------
 class AboutPopup(ctk.CTkToplevel):
     def __init__(self, parent, anchor_widget):
         super().__init__(parent)
@@ -475,22 +477,16 @@ class AboutPopup(ctk.CTkToplevel):
         pop_w = self.winfo_width()
         pop_h = self.winfo_height()
 
-        # Позиционируем слева от якоря (правый край окна привязан к левому краю якоря + отступ)
         x = anchor_x - pop_w
         y = anchor_y + anchor_h
 
-        # Если слева не помещается, показываем справа
         if x < parent_x:
             x = anchor_x + anchor_w
-
-        # Если справа не помещается (для случая, когда слева тоже не поместилось) – прижимаем к правому краю
         if x + pop_w > parent_x + parent_w:
             x = parent_x + parent_w - pop_w
-        # Если всё равно выходит за левый край
         if x < parent_x:
             x = parent_x
 
-        # По вертикали: если не помещается снизу, показываем сверху
         if y + pop_h > parent_y + parent_h:
             y = anchor_y - pop_h
         if y < parent_y:
@@ -611,13 +607,13 @@ class LoginFrame(ctk.CTkFrame):
         login = self.entry_login.get().strip()
         password = self.entry_password.get()
         if not login or not password:
-            messagebox.showerror("Ошибка", "Введите логин/email и пароль")
+            show_centered_dialog(self, "Ошибка", "Введите логин/email и пароль", "error")
             return
         user = authenticate_user(login, password)
         if user:
             self.on_login_success(user)
         else:
-            messagebox.showerror("Ошибка", "Неверный логин/email или пароль")
+            show_centered_dialog(self, "Ошибка", "Неверный логин/email или пароль", "error")
 
     def do_register(self):
         login = self.reg_login.get().strip()
@@ -626,25 +622,25 @@ class LoginFrame(ctk.CTkFrame):
         password2 = self.reg_password2.get()
         role_name = self.reg_role.get()
         if not login or not email or not password:
-            messagebox.showerror("Ошибка", "Заполните все поля")
+            show_centered_dialog(self, "Ошибка", "Заполните все поля", "error")
             return
         if password != password2:
-            messagebox.showerror("Ошибка", "Пароли не совпадают")
+            show_centered_dialog(self, "Ошибка", "Пароли не совпадают", "error")
             return
         if len(password) < 4:
-            messagebox.showerror("Ошибка", "Пароль должен быть не менее 4 символов")
+            show_centered_dialog(self, "Ошибка", "Пароль должен быть не менее 4 символов", "error")
             return
         role_id = get_role_id_by_name(role_name)
         if not role_id:
-            messagebox.showerror("Ошибка", "Роль не найдена")
+            show_centered_dialog(self, "Ошибка", "Роль не найдена", "error")
             return
         pass_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user_id = create_user(login, pass_hash, email, role_id, is_active=True)
         if user_id:
-            messagebox.showinfo("Успех", f"Пользователь {login} зарегистрирован! Теперь войдите.")
+            show_centered_dialog(self, "Успех", f"Пользователь {login} зарегистрирован! Теперь войдите.", "success")
             self.hide_register()
         else:
-            messagebox.showerror("Ошибка", "Пользователь с таким логином или email уже существует")
+            show_centered_dialog(self, "Ошибка", "Пользователь с таким логином или email уже существует", "error")
 
 # ---------- ФРЕЙМ РЕДАКТИРОВАНИЯ ПЛАНА ----------
 class PlanEditFrame(ctk.CTkFrame):
@@ -682,14 +678,12 @@ class PlanEditFrame(ctk.CTkFrame):
         frame.grid_columnconfigure(1, weight=1)
         row = 0
 
-        # Название
         ctk.CTkLabel(frame, text="Название мероприятия:*", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.entry_title = ctk.CTkEntry(frame, width=450, height=40, font=ctk.CTkFont(size=14))
         self.entry_title.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Дата
         ctk.CTkLabel(frame, text="Дата:*", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.date_var = ctk.StringVar(value=datetime.now().strftime("%d.%m.%Y"))
@@ -698,7 +692,6 @@ class PlanEditFrame(ctk.CTkFrame):
         self.date_entry.bind("<Button-1>", self.show_calendar_dropdown)
 
         row += 1
-        # Время
         ctk.CTkLabel(frame, text="Время проведения:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         time_frame = ctk.CTkFrame(frame, fg_color="transparent")
@@ -727,28 +720,24 @@ class PlanEditFrame(ctk.CTkFrame):
         self.end_minute_entry.bind("<Button-1>", lambda e: self.show_time_picker(False))
 
         row += 1
-        # Место (SearchBox)
         ctk.CTkLabel(frame, text="Место проведения:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.location_box = SearchBox(frame, LOCATION_PRESET, special_values=["Другой город"])
         self.location_box.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Категория (SearchBox)
         ctk.CTkLabel(frame, text="Категория мероприятия:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.category_box = SearchBox(frame, CATEGORY_PRESET, special_values=["Другое"])
         self.category_box.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Описание
         ctk.CTkLabel(frame, text="Описание мероприятия:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="ne", pady=8, padx=(0, 15))
         self.text_description = ctk.CTkTextbox(frame, height=120, width=450, font=ctk.CTkFont(size=13))
         self.text_description.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Аудитория
         ctk.CTkLabel(frame, text="Аудитория (кому предназначено):", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.entry_audience = ctk.CTkEntry(frame, width=450, height=40, font=ctk.CTkFont(size=14))
@@ -809,11 +798,10 @@ class PlanEditFrame(ctk.CTkFrame):
     def _load_data(self):
         plan = get_event_plan_by_id(self.plan_id)
         if not plan:
-            messagebox.showerror("Ошибка", "План не найден")
+            show_centered_dialog(self, "Ошибка", "План не найден", "error")
             self.on_back()
             return
 
-        # plan: (id, title, event_date, event_time, event_end_time, location, description, speaker, audience, category, created_by, created_at)
         self.entry_title.insert(0, plan[1])
         if plan[2]:
             self.set_date(plan[2])
@@ -834,18 +822,18 @@ class PlanEditFrame(ctk.CTkFrame):
 
         self.location_box.set(plan[5] or "")
         self.text_description.insert("0.0", plan[6] or "")
-        self.category_box.set(plan[9] or "")     # category на индексе 9
-        self.entry_audience.insert(0, plan[8] or "")  # audience на индексе 8
+        self.category_box.set(plan[9] or "")
+        self.entry_audience.insert(0, plan[8] or "")
 
     def _save(self):
         title = self.entry_title.get().strip()
         if not title:
-            messagebox.showerror("Ошибка", "Название обязательно")
+            show_centered_dialog(self, "Ошибка", "Название обязательно", "error")
             return
         try:
             event_date = datetime.strptime(self.date_var.get(), "%d.%m.%Y").date()
         except:
-            messagebox.showerror("Ошибка", "Некорректная дата")
+            show_centered_dialog(self, "Ошибка", "Некорректная дата", "error")
             return
 
         start_time = None
@@ -864,21 +852,21 @@ class PlanEditFrame(ctk.CTkFrame):
             success = update_event_plan(self.plan_id, title, event_date, start_time, end_time,
                                         location, description, None, audience, category)
             if success:
-                messagebox.showinfo("Успех", "План обновлён")
+                show_centered_dialog(self, "Успех", "План обновлён", "success")
                 self.on_back()
             else:
-                messagebox.showerror("Ошибка", "Не удалось обновить план")
+                show_centered_dialog(self, "Ошибка", "Не удалось обновить план", "error")
         else:
             if not self.user_data:
-                messagebox.showerror("Ошибка", "Неизвестный пользователь")
+                show_centered_dialog(self, "Ошибка", "Неизвестный пользователь", "error")
                 return
             new_id = create_event_plan(title, event_date, start_time, end_time,
                                        location, description, None, audience, category, self.user_data["id"])
             if new_id:
-                messagebox.showinfo("Успех", "План создан")
+                show_centered_dialog(self, "Успех", "План создан", "success")
                 self.on_back()
             else:
-                messagebox.showerror("Ошибка", "Не удалось создать план")
+                show_centered_dialog(self, "Ошибка", "Не удалось создать план", "error")
 
 # ---------- ФРЕЙМ СПИСКА ПЛАНОВ ----------
 class PlansViewFrame(ctk.CTkFrame):
@@ -923,17 +911,25 @@ class PlansViewFrame(ctk.CTkFrame):
             start_time = plan[3] or ""
             end_time = plan[4] or ""
             location = plan[5] or ""
+            description = plan[6] or ""
 
             card = ctk.CTkFrame(self.scrollable, fg_color=COLOR_CARD, corner_radius=10)
             card.pack(fill="x", pady=5, padx=5)
+
             info_frame = ctk.CTkFrame(card, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
+
             ctk.CTkLabel(info_frame, text=title, font=ctk.CTkFont(size=16, weight="bold"),
-                         text_color=COLOR_TEXT).pack(anchor="w")
+                         text_color=COLOR_PRIMARY).pack(anchor="w")
             date_str = event_date.strftime("%d.%m.%Y") if event_date else "дата не указана"
             time_str = f"{start_time} - {end_time}" if start_time or end_time else ""
             details = f"{date_str}  {time_str}  •  {location}" if location else f"{date_str}  {time_str}"
-            ctk.CTkLabel(info_frame, text=details, text_color=COLOR_GRAY).pack(anchor="w")
+            ctk.CTkLabel(info_frame, text=details, text_color=COLOR_GRAY).pack(anchor="w", pady=(2, 2))
+            if description:
+                short_desc = description[:150] + "..." if len(description) > 150 else description
+                ctk.CTkLabel(info_frame, text=short_desc, text_color=COLOR_TEXT, anchor="w",
+                             justify="left", wraplength=400).pack(anchor="w", pady=(5, 0))
+
             actions = ctk.CTkFrame(card, fg_color="transparent")
             actions.pack(side="right", padx=10, pady=10)
             edit_btn = ctk.CTkButton(actions, text="✏️ Редактировать", width=100,
@@ -941,11 +937,11 @@ class PlansViewFrame(ctk.CTkFrame):
             edit_btn.pack(side="left", padx=5)
             delete_btn = ctk.CTkButton(actions, text="🗑 Удалить", width=80,
                                        fg_color="transparent", hover_color="#cc3333",
-                                       command=lambda pid=plan_id: self.delete_plan(pid))
+                                       command=lambda pid=plan_id, ttl=title: self.delete_plan(pid, ttl))
             delete_btn.pack(side="left", padx=5)
 
-    def delete_plan(self, plan_id):
-        if messagebox.askyesno("Подтверждение", "Удалить план?"):
+    def delete_plan(self, plan_id, plan_title):
+        if show_centered_dialog(self, "Подтверждение", f"Удалить план?\n\n{plan_title}", "question", ("Да", "Нет")):
             delete_event_plan(plan_id)
             self.load_plans()
 
@@ -962,10 +958,10 @@ class MainAppFrame(ctk.CTkFrame):
         self.switch_to_callback = switch_to_callback
         self.pack(fill="both", expand=True)
 
-        self.main_canvas = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.main_canvas.pack(fill="both", expand=True, padx=20, pady=20)
+        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        self.top_nav = ctk.CTkFrame(self.main_canvas, fg_color="transparent")
+        self.top_nav = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.top_nav.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(self.top_nav, text="Генератор новостей",
                      font=ctk.CTkFont(size=20, weight="bold"), text_color=COLOR_PRIMARY).pack(side="left")
@@ -975,7 +971,7 @@ class MainAppFrame(ctk.CTkFrame):
                                          command=lambda: self.show_profile_menu(self.profile_btn))
         self.profile_btn.pack(side="right", padx=(0, 5))
 
-        self.nav_frame = ctk.CTkFrame(self.main_canvas, fg_color=COLOR_CARD, corner_radius=10)
+        self.nav_frame = ctk.CTkFrame(self.main_frame, fg_color=COLOR_CARD, corner_radius=10)
         self.nav_frame.pack(fill="x", pady=(0, 20))
         nav_buttons = [("Планы", self.switch_to_plans), ("Генерация", self.switch_to_generation), ("Отчёты", self.switch_to_reports)]
         for i, (text, command) in enumerate(nav_buttons):
@@ -985,7 +981,7 @@ class MainAppFrame(ctk.CTkFrame):
             btn.grid(row=0, column=i, padx=5, pady=5, sticky="ew")
             self.nav_frame.grid_columnconfigure(i, weight=1)
 
-        self.grid_frame = ctk.CTkFrame(self.main_canvas, fg_color="transparent")
+        self.grid_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.grid_frame.pack(fill="both", expand=True, pady=(0, 20))
         self.grid_frame.grid_columnconfigure(0, weight=1)
         self.grid_frame.grid_columnconfigure(1, weight=1)
@@ -1010,7 +1006,7 @@ class MainAppFrame(ctk.CTkFrame):
                                           font=ctk.CTkFont(size=14, weight="bold"))
         self.generate_btn.pack(fill="x", padx=15, pady=10)
 
-        self.recent_frame = ctk.CTkFrame(self.main_canvas, fg_color=COLOR_CARD, corner_radius=15)
+        self.recent_frame = ctk.CTkFrame(self.main_frame, fg_color=COLOR_CARD, corner_radius=15)
         self.recent_frame.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(self.recent_frame, text="🗞️ Последние сгенерированные новости",
                      font=ctk.CTkFont(size=16, weight="bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
@@ -1020,7 +1016,7 @@ class MainAppFrame(ctk.CTkFrame):
                                      fg_color="transparent", text_color=COLOR_SECONDARY, hover_color="#3A3450")
         all_news_btn.pack(anchor="e", padx=15, pady=(0, 15))
 
-        self.status_bar = ctk.CTkFrame(self.main_canvas, fg_color="transparent")
+        self.status_bar = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.status_bar.pack(fill="x", pady=(10, 0))
         self.status_label = ctk.CTkLabel(self.status_bar, text="🟢 Нейросеть активна и готова к работе",
                                          font=ctk.CTkFont(size=12), text_color=COLOR_SECONDARY)
@@ -1088,15 +1084,14 @@ class MainAppFrame(ctk.CTkFrame):
     def quick_generate(self):
         selected = self.quick_plan_combo.get()
         if not selected or selected == "Нет доступных планов":
-            messagebox.showwarning("Предупреждение", "Нет доступных планов для генерации")
+            show_centered_dialog(self, "Предупреждение", "Нет доступных планов для генерации", "warning")
             return
         try:
             plan_id = int(selected.split(" - ")[0])
         except:
-            messagebox.showerror("Ошибка", "Не удалось определить ID плана")
+            show_centered_dialog(self, "Ошибка", "Не удалось определить ID плана", "error")
             return
-        from gui.generation_dialog import GenerationDialog
-        GenerationDialog(self.parent, plan_id, self.user_data, self.news_generator)
+        self.switch_to_callback("generation_process", plan_id, return_to_main=True)
 
     def show_saved_news(self):
         from gui.news_view_window import NewsViewWindow
@@ -1107,8 +1102,7 @@ class MainAppFrame(ctk.CTkFrame):
         self.switch_to_callback("plans")
 
     def switch_to_generation(self):
-        from gui.plans_list_window import PlansListWindow
-        PlansListWindow(self.parent, self.user_data, self.news_generator)
+        self.switch_to_callback("generation")
 
     def switch_to_reports(self):
         from gui.export_dialog import ExportDialog
@@ -1159,7 +1153,7 @@ class MainWindow(ctk.CTk):
         self.configure(fg_color=COLOR_BG)
 
         if not init_connection_pool():
-            messagebox.showerror("Ошибка", "Не удалось подключиться к базе данных")
+            show_centered_dialog(self, "Ошибка", "Не удалось подключиться к базе данных", "error")
             self.destroy()
             return
 
@@ -1168,6 +1162,7 @@ class MainWindow(ctk.CTk):
             self.destroy()
             return
 
+        self.current_user_data = None
         self.current_frame = None
         self.show_login()
 
@@ -1179,39 +1174,67 @@ class MainWindow(ctk.CTk):
         self.geometry("520x670")
 
     def on_login_success(self, user_data):
+        self.current_user_data = user_data
         if self.current_frame:
             self.current_frame.destroy()
         self.current_frame = MainAppFrame(self, user_data, self.news_generator, self.switch_to_frame)
         self.current_frame.pack(fill="both", expand=True)
         self.geometry("1000x700")
 
-    def switch_to_frame(self, target, plan_id=None):
+    def switch_to_frame(self, target, plan_id=None, news_id=None, news_text=None, return_to_main=False, selected_plan_id=None):
         if target == "plans":
             self.current_frame.destroy()
-            self.current_frame = PlansViewFrame(self, self.current_frame.user_data,
-                                                self.current_frame.news_generator,
+            self.current_frame = PlansViewFrame(self, self.current_user_data,
+                                                self.news_generator,
                                                 self.switch_to_plan_edit,
                                                 self.switch_to_dashboard)
             self.current_frame.pack(fill="both", expand=True)
         elif target == "plan_edit":
             self.current_frame.destroy()
-            self.current_frame = PlanEditFrame(self, self.current_frame.user_data,
-                                               self.current_frame.news_generator,
+            self.current_frame = PlanEditFrame(self, self.current_user_data,
+                                               self.news_generator,
                                                self.switch_back_to_plans,
                                                plan_id)
             self.current_frame.pack(fill="both", expand=True)
+        elif target == "generation":
+            self.current_frame.destroy()
+            self.current_frame = GenerationFrame(self, self.current_user_data,
+                                                 self.news_generator,
+                                                 self.switch_to_dashboard,
+                                                 selected_plan_id=selected_plan_id)
+            self.current_frame.pack(fill="both", expand=True)
+        elif target == "generation_process":
+            self.current_frame.destroy()
+            if return_to_main:
+                on_back = self.switch_to_dashboard
+            else:
+                on_back = lambda: self.switch_back_to_generation(plan_id)
+            self.current_frame = GenerationProcessFrame(self, self.current_user_data,
+                                                        self.news_generator,
+                                                        on_back,
+                                                        plan_id)
+            self.current_frame.pack(fill="both", expand=True)
+        elif target == "news_view":
+            self.current_frame.destroy()
+            self.current_frame = NewsViewFrame(self, self.current_user_data,
+                                               self.news_generator,
+                                               lambda: self.switch_back_to_generation(plan_id),
+                                               news_id, news_text)
+            self.current_frame.pack(fill="both", expand=True)
 
     def switch_to_plan_edit(self, plan_id):
-        self.switch_to_frame("plan_edit", plan_id)
+        self.switch_to_frame("plan_edit", plan_id=plan_id)
 
     def switch_back_to_plans(self):
         self.switch_to_frame("plans")
 
+    def switch_back_to_generation(self, plan_id):
+        self.switch_to_frame("generation", selected_plan_id=plan_id)
+
     def switch_to_dashboard(self):
-        user_data = self.current_frame.user_data if hasattr(self.current_frame, 'user_data') else None
-        news_gen = self.current_frame.news_generator if hasattr(self.current_frame, 'news_generator') else None
         self.current_frame.destroy()
-        self.current_frame = MainAppFrame(self, user_data, news_gen, self.switch_to_frame)
+        self.current_frame = MainAppFrame(self, self.current_user_data,
+                                          self.news_generator, self.switch_to_frame)
         self.current_frame.pack(fill="both", expand=True)
 
     def on_closing(self):
