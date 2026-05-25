@@ -20,6 +20,7 @@ from services.gpt_news_generator import GPTNewsGenerator
 from gui.generation_frame import GenerationFrame
 from gui.generation_process_frame import GenerationProcessFrame
 from gui.news_view_frame import NewsViewFrame
+from gui.all_news_frame import AllNewsFrame   # новый импорт
 from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
@@ -323,6 +324,7 @@ class TimePickerPopup(ctk.CTkToplevel):
         main_frame = ctk.CTkFrame(self, fg_color="transparent")
         main_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
+        # Часы
         hour_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         hour_frame.pack(side="left", expand=True, fill="both")
         ctk.CTkLabel(hour_frame, text="Часы", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
@@ -345,6 +347,7 @@ class TimePickerPopup(ctk.CTkToplevel):
 
         ctk.CTkLabel(main_frame, text=":", font=ctk.CTkFont(size=24)).pack(side="left", padx=10)
 
+        # Минуты
         minute_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         minute_frame.pack(side="left", expand=True, fill="both")
         ctk.CTkLabel(minute_frame, text="Минуты", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
@@ -678,12 +681,14 @@ class PlanEditFrame(ctk.CTkFrame):
         frame.grid_columnconfigure(1, weight=1)
         row = 0
 
+        # Название
         ctk.CTkLabel(frame, text="Название мероприятия:*", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.entry_title = ctk.CTkEntry(frame, width=450, height=40, font=ctk.CTkFont(size=14))
         self.entry_title.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
+        # Дата
         ctk.CTkLabel(frame, text="Дата:*", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.date_var = ctk.StringVar(value=datetime.now().strftime("%d.%m.%Y"))
@@ -692,6 +697,7 @@ class PlanEditFrame(ctk.CTkFrame):
         self.date_entry.bind("<Button-1>", self.show_calendar_dropdown)
 
         row += 1
+        # Время
         ctk.CTkLabel(frame, text="Время проведения:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         time_frame = ctk.CTkFrame(frame, fg_color="transparent")
@@ -720,24 +726,28 @@ class PlanEditFrame(ctk.CTkFrame):
         self.end_minute_entry.bind("<Button-1>", lambda e: self.show_time_picker(False))
 
         row += 1
+        # Место
         ctk.CTkLabel(frame, text="Место проведения:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.location_box = SearchBox(frame, LOCATION_PRESET, special_values=["Другой город"])
         self.location_box.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
+        # Категория
         ctk.CTkLabel(frame, text="Категория мероприятия:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.category_box = SearchBox(frame, CATEGORY_PRESET, special_values=["Другое"])
         self.category_box.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
+        # Описание
         ctk.CTkLabel(frame, text="Описание мероприятия:", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="ne", pady=8, padx=(0, 15))
         self.text_description = ctk.CTkTextbox(frame, height=120, width=450, font=ctk.CTkFont(size=13))
         self.text_description.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
+        # Аудитория
         ctk.CTkLabel(frame, text="Аудитория (кому предназначено):", font=ctk.CTkFont(size=14),
                      text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.entry_audience = ctk.CTkEntry(frame, width=450, height=40, font=ctk.CTkFont(size=14))
@@ -1094,8 +1104,7 @@ class MainAppFrame(ctk.CTkFrame):
         self.switch_to_callback("generation_process", plan_id, return_to_main=True)
 
     def show_saved_news(self):
-        from gui.news_view_window import NewsViewWindow
-        NewsViewWindow(self.parent, self.user_data)
+        self.switch_to_callback("all_news")
 
     def switch_to_plans(self):
         self.nav_frame.pack_forget()
@@ -1181,7 +1190,7 @@ class MainWindow(ctk.CTk):
         self.current_frame.pack(fill="both", expand=True)
         self.geometry("1000x700")
 
-    def switch_to_frame(self, target, plan_id=None, news_id=None, news_text=None, return_to_main=False, selected_plan_id=None):
+    def switch_to_frame(self, target, plan_id=None, news_id=None, news_text=None, return_to_main=False, selected_plan_id=None, on_back_callback=None):
         if target == "plans":
             self.current_frame.destroy()
             self.current_frame = PlansViewFrame(self, self.current_user_data,
@@ -1216,10 +1225,18 @@ class MainWindow(ctk.CTk):
             self.current_frame.pack(fill="both", expand=True)
         elif target == "news_view":
             self.current_frame.destroy()
+            if on_back_callback is None:
+                on_back_callback = lambda: self.switch_back_to_generation(plan_id)
             self.current_frame = NewsViewFrame(self, self.current_user_data,
                                                self.news_generator,
-                                               lambda: self.switch_back_to_generation(plan_id),
+                                               on_back_callback,
                                                news_id, news_text)
+            self.current_frame.pack(fill="both", expand=True)
+        elif target == "all_news":
+            self.current_frame.destroy()
+            self.current_frame = AllNewsFrame(self, self.current_user_data,
+                                              self.news_generator,
+                                              self.switch_to_dashboard)
             self.current_frame.pack(fill="both", expand=True)
 
     def switch_to_plan_edit(self, plan_id):
