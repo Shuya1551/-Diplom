@@ -16,6 +16,7 @@ from database.db_connection import init_connection_pool, close_all_connections
 from repositories.user_repository import authenticate_user, create_user, get_role_id_by_name
 from repositories.event_plan_repository import get_all_event_plans, delete_event_plan, get_event_plan_by_id, create_event_plan, update_event_plan
 from repositories.generated_news_repository import get_recent_news
+from repositories.settings_repository import get_setting
 from services.gpt_news_generator import GPTNewsGenerator
 from gui.generation_frame import GenerationFrame
 from gui.generation_process_frame import GenerationProcessFrame
@@ -23,6 +24,7 @@ from gui.news_view_frame import NewsViewFrame
 from gui.all_news_frame import AllNewsFrame
 from gui.export_selection_frame import ExportSelectionFrame
 from gui.profile_frame import ProfileFrame
+from gui.settings_window import SettingsWindow
 from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
@@ -441,6 +443,7 @@ class AboutPopup(ctk.CTkToplevel):
         super().__init__(parent)
         self.anchor_widget = anchor_widget
         self.overrideredirect(True)
+        self.attributes('-topmost', True)
         self.configure(fg_color=COLOR_BG)
 
         frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=15,
@@ -478,7 +481,7 @@ class AboutPopup(ctk.CTkToplevel):
         parent_width = parent.winfo_width()
         parent_height = parent.winfo_height()
 
-        offset = 40
+        offset = 10
         x = anchor_right - popup_width - offset
         y = anchor_top
 
@@ -486,22 +489,28 @@ class AboutPopup(ctk.CTkToplevel):
             x = parent_x + 5
         if x + popup_width > parent_x + parent_width - 5:
             x = parent_x + parent_width - popup_width - 5
-
         if y + popup_height > parent_y + parent_height:
             y = anchor_top - popup_height
         if y < parent_y + 5:
             y = parent_y + 5
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        if x + popup_width > screen_w:
+            x = screen_w - popup_width - 10
+        if x < 0:
+            x = 10
+        if y + popup_height > screen_h:
+            y = screen_h - popup_height - 10
+        if y < 0:
+            y = 10
 
         self.geometry(f"{popup_width}x{popup_height}+{int(x)}+{int(y)}")
 
         self.focus_set()
         self.bind("<FocusOut>", lambda e: self.destroy())
         parent.bind("<Button-1>", lambda e: self.destroy(), add=True)
-
         self.bind("<Escape>", lambda e: self.destroy())
-
-    def on_focus_out(self, event):
-        self.destroy()
 
 # ---------- ФРЕЙМ АВТОРИЗАЦИИ ----------
 class LoginFrame(ctk.CTkFrame):
@@ -970,6 +979,7 @@ class MainAppFrame(ctk.CTkFrame):
         self.user_data = user_data
         self.news_generator = news_generator
         self.switch_to_callback = switch_to_callback
+        self.profile_popup = None
         self.pack(fill="both", expand=True)
 
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -1124,8 +1134,14 @@ class MainAppFrame(ctk.CTkFrame):
         AboutPopup(self, self.about_label)
 
     def show_profile_menu(self, source_widget):
+        if self.profile_popup and self.profile_popup.winfo_exists():
+            self.profile_popup.destroy()
+            self.profile_popup = None
+            return
+
         popup = ctk.CTkToplevel(self.parent)
         popup.overrideredirect(True)
+        popup.attributes('-topmost', True)
         popup.configure(fg_color=COLOR_BG)
 
         frame = ctk.CTkFrame(popup, fg_color=COLOR_CARD, corner_radius=15,
@@ -1133,10 +1149,10 @@ class MainAppFrame(ctk.CTkFrame):
         frame.pack(fill="both", expand=True, padx=0, pady=0)
 
         items = [
-            ("Личный кабинет", "👤", lambda: self.switch_to_callback("profile")),
-            ("Настройки", "⚙️", self.open_settings),
-            ("Выйти из профиля", "🚪", self.logout),
-            ("Выйти из приложения", "❌", self.exit_app)
+            ("Личный кабинет", "👤", lambda: self._close_and_switch("profile")),
+            ("Настройки", "⚙️", lambda: self._close_and_switch("settings")),
+            ("Выйти из профиля", "🚪", self._logout_and_close),
+            ("Выйти из приложения", "❌", self._exit_app_and_close)
         ]
 
         for i, (text, icon, cmd) in enumerate(items):
@@ -1178,49 +1194,62 @@ class MainAppFrame(ctk.CTkFrame):
         popup_x = icon_right - popup_width - 45
         popup_y = icon_top
 
-        if popup_x + popup_width > parent_x + parent_width - 5:
-            popup_x = parent_x + parent_width - popup_width - 5
         if popup_x < parent_x + 5:
             popup_x = parent_x + 5
-
+        if popup_x + popup_width > parent_x + parent_width - 5:
+            popup_x = parent_x + parent_width - popup_width - 5
         if popup_y + popup_height > parent_y + parent_height:
             popup_y = icon_top - popup_height
         if popup_y < parent_y + 5:
             popup_y = parent_y + 5
 
+        screen_w = popup.winfo_screenwidth()
+        screen_h = popup.winfo_screenheight()
+        if popup_x + popup_width > screen_w:
+            popup_x = screen_w - popup_width - 10
+        if popup_x < 0:
+            popup_x = 10
+        if popup_y + popup_height > screen_h:
+            popup_y = screen_h - popup_height - 10
+        if popup_y < 0:
+            popup_y = 10
+
         popup.geometry(f"{popup_width}x{popup_height}+{int(popup_x)}+{int(popup_y)}")
-
-        def close_popup(event=None):
-            if event and event.widget:
-                widget = event.widget
-                while widget:
-                    if widget == popup or widget == frame:
-                        return
-                    widget = widget.master
-            popup.destroy()
-            try:
-                parent.unbind("<Button-1>", bind_id)
-            except:
-                pass
-
-        bind_id = parent.bind("<Button-1>", close_popup, add=True)
 
         def on_focus_out(event):
             if not (event.widget == popup or event.widget == frame or
                     (hasattr(event.widget, 'master') and event.widget.master == frame)):
-                close_popup()
+                popup.destroy()
+                self.profile_popup = None
         popup.bind("<FocusOut>", on_focus_out)
-
-        popup.bind("<Escape>", lambda e: close_popup())
-
+        popup.bind("<Escape>", lambda e: popup.destroy() or setattr(self, 'profile_popup', None))
         popup.focus_set()
+
+        self.profile_popup = popup
+
+    def _close_and_switch(self, target):
+        if self.profile_popup and self.profile_popup.winfo_exists():
+            self.profile_popup.destroy()
+            self.profile_popup = None
+        self.switch_to_callback(target)
+
+    def _logout_and_close(self):
+        if self.profile_popup and self.profile_popup.winfo_exists():
+            self.profile_popup.destroy()
+            self.profile_popup = None
+        self.logout()
+
+    def _exit_app_and_close(self):
+        if self.profile_popup and self.profile_popup.winfo_exists():
+            self.profile_popup.destroy()
+            self.profile_popup = None
+        self.exit_app()
+
     def open_profile(self):
-        from gui.profile_window import ProfileWindow
-        ProfileWindow(self.parent, self.user_data)
+        self.switch_to_callback("profile")
 
     def open_settings(self):
-        from gui.settings_window import SettingsWindow
-        SettingsWindow(self.parent, self.user_data)
+        self.switch_to_callback("settings")
 
     def about(self):
         pass
@@ -1253,9 +1282,31 @@ class MainWindow(ctk.CTk):
             self.destroy()
             return
 
+        self.apply_window_settings()
+
         self.current_user_data = None
         self.current_frame = None
         self.show_login()
+
+    def apply_window_settings(self):
+        """Применяет сохранённые настройки окна (разрешение и режим)."""
+        resolution = get_setting("window_resolution", "1000x700")
+        mode = get_setting("window_mode", "Обычный")
+
+        if resolution == "Полноэкранный":
+            self.attributes('-fullscreen', True)
+        else:
+            self.attributes('-fullscreen', False)
+            if 'x' in resolution:
+                w, h = resolution.split('x')
+                self.geometry(f"{w}x{h}")
+
+        if mode == "Развёрнуто на весь экран" and resolution != "Полноэкранный":
+            self.state('zoomed')
+        elif mode == "На весь экран (F11)":
+            self.attributes('-fullscreen', True)
+        elif mode == "Обычный":
+            self.state('normal')
 
     def show_login(self):
         if self.current_frame:
@@ -1329,9 +1380,16 @@ class MainWindow(ctk.CTk):
         elif target == "profile":
             self.current_frame.destroy()
             self.current_frame = ProfileFrame(self, self.current_user_data,
-                                            self.news_generator,
-                                            self.switch_to_dashboard)
-            self.current_frame.pack(fill="both", expand=True)       
+                                              self.news_generator,
+                                              self.switch_to_dashboard)
+            self.current_frame.pack(fill="both", expand=True)
+        elif target == "settings":
+            self.current_frame.destroy()
+            self.current_frame = SettingsWindow(self, self.current_user_data,
+                                                self.news_generator,
+                                                self.switch_to_dashboard,
+                                                apply_window_callback=self.apply_window_settings)
+            self.current_frame.pack(fill="both", expand=True)
 
     def switch_to_plan_edit(self, plan_id):
         self.switch_to_frame("plan_edit", plan_id=plan_id)
