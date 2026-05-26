@@ -33,17 +33,27 @@ def create_event_plan(title, event_date, event_time, event_end_time, location, d
         if conn:
             return_connection(conn)
 
-def get_all_event_plans():
-    """Возвращает список всех планов мероприятий."""
+def get_all_event_plans(user_id=None, user_role=None):
+    """
+    Возвращает список планов мероприятий.
+    """
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("""
-            SELECT id, title, event_date, event_time, event_end_time, location, description, speaker, audience, category, created_by, created_at
-            FROM event_plans
-            ORDER BY event_date DESC, event_time
-        """)
+        if user_role == 'admin':
+            cur.execute("""
+                SELECT id, title, event_date, event_time, event_end_time, location, description, speaker, audience, category, created_by, created_at
+                FROM event_plans
+                ORDER BY event_date DESC, event_time
+            """)
+        else:
+            cur.execute("""
+                SELECT id, title, event_date, event_time, event_end_time, location, description, speaker, audience, category, created_by, created_at
+                FROM event_plans
+                WHERE created_by = %s
+                ORDER BY event_date DESC, event_time
+            """, (user_id,))
         rows = cur.fetchall()
         cur.close()
         return rows
@@ -51,16 +61,18 @@ def get_all_event_plans():
         if conn:
             return_connection(conn)
 
-def get_event_plan_by_id(plan_id):
-    """Возвращает один план по ID или None."""
+def get_event_plan_by_id(plan_id, user_id=None, user_role=None):
+    """
+    Возвращает план, если пользователь имеет доступ.
+    """
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("""
-            SELECT id, title, event_date, event_time, event_end_time, location, description, speaker, audience, category, created_by, created_at
-            FROM event_plans WHERE id = %s
-        """, (plan_id,))
+        if user_role == 'admin':
+            cur.execute("SELECT * FROM event_plans WHERE id = %s", (plan_id,))
+        else:
+            cur.execute("SELECT * FROM event_plans WHERE id = %s AND created_by = %s", (plan_id, user_id))
         row = cur.fetchone()
         cur.close()
         return row

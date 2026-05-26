@@ -57,7 +57,7 @@ class GenerationFrame(ctk.CTkFrame):
     def load_plans(self):
         for widget in self.plans_list.winfo_children():
             widget.destroy()
-        plans = get_all_event_plans()
+        plans = get_all_event_plans(self.user_data['id'], self.user_data['role'])
         if not plans:
             lbl = ctk.CTkLabel(self.plans_list, text="Нет планов. Создайте план в разделе «Планы».",
                                text_color=COLOR_GRAY)
@@ -99,7 +99,7 @@ class GenerationFrame(ctk.CTkFrame):
     def load_all_news(self):
         for widget in self.news_list.winfo_children():
             widget.destroy()
-        news_list = get_all_generated_news()
+        news_list = get_all_generated_news(self.user_data['id'], self.user_data['role'])
         if not news_list:
             lbl = ctk.CTkLabel(self.news_list, text="Нет сгенерированных новостей",
                                text_color=COLOR_GRAY)

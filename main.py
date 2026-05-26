@@ -446,24 +446,23 @@ class AboutPopup(ctk.CTkToplevel):
         self.attributes('-topmost', True)
         self.configure(fg_color=COLOR_BG)
 
-        frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=15,
+        frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=12,
                              border_width=2, border_color="white")
-        frame.pack(fill="both", expand=True, padx=0, pady=0)
+        frame.pack(fill="both", expand=True, padx=8, pady=8)
 
-        ctk.CTkLabel(frame, text="ℹ️ О программе", font=ctk.CTkFont(size=16, weight="bold"),
-                     text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
-        ctk.CTkLabel(frame, text="Автор: Головатый И.Н.", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
-        ctk.CTkLabel(frame, text="Группа: Идс23Б", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
-        ctk.CTkLabel(frame, text="Год: 2026", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
-        ctk.CTkLabel(frame, text="Версия: 1.0", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
+        ctk.CTkLabel(frame, text="ℹ️ О программе", font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=COLOR_PRIMARY).pack(anchor="w", padx=12, pady=(6, 2))
+        ctk.CTkLabel(frame, text="Автор: Головатый И.Н.", font=ctk.CTkFont(size=11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Группа: Идс23Б", font=ctk.CTkFont(size=11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Год: 2026", font=ctk.CTkFont(size=11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Версия: 1.0", font=ctk.CTkFont(size=11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
         ctk.CTkLabel(frame, text="Генератор новостей на основе нейросети ruGPT-3",
-                     font=ctk.CTkFont(size=11), text_color=COLOR_GRAY, wraplength=260).pack(anchor="w", padx=15, pady=(10, 15))
+                     font=ctk.CTkFont(size=10), text_color=COLOR_GRAY, wraplength=220).pack(anchor="w", padx=12, pady=(6, 6))
 
-        # Позиционирование
         self.update_idletasks()
         popup_width = self.winfo_width()
         popup_height = self.winfo_height()
@@ -485,25 +484,14 @@ class AboutPopup(ctk.CTkToplevel):
         x = anchor_right - popup_width - offset
         y = anchor_top
 
+        if x + popup_width > parent_x + parent_width:
+            x = parent_x + parent_width - popup_width - 5
         if x < parent_x + 5:
             x = parent_x + 5
-        if x + popup_width > parent_x + parent_width - 5:
-            x = parent_x + parent_width - popup_width - 5
         if y + popup_height > parent_y + parent_height:
             y = anchor_top - popup_height
         if y < parent_y + 5:
             y = parent_y + 5
-
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        if x + popup_width > screen_w:
-            x = screen_w - popup_width - 10
-        if x < 0:
-            x = 10
-        if y + popup_height > screen_h:
-            y = screen_h - popup_height - 10
-        if y < 0:
-            y = 10
 
         self.geometry(f"{popup_width}x{popup_height}+{int(x)}+{int(y)}")
 
@@ -818,7 +806,7 @@ class PlanEditFrame(ctk.CTkFrame):
                         initial_hour=hour, initial_minute=minute, callback=on_time_selected)
 
     def _load_data(self):
-        plan = get_event_plan_by_id(self.plan_id)
+        plan = get_event_plan_by_id(self.plan_id, self.user_data['id'], self.user_data['role'])
         if not plan:
             show_centered_dialog(self, "Ошибка", "План не найден", "error")
             self.on_back()
@@ -834,18 +822,18 @@ class PlanEditFrame(ctk.CTkFrame):
                 self.start_hour_entry.insert(0, f"{int(parts[0]):02d}")
                 self.start_minute_entry.delete(0, "end")
                 self.start_minute_entry.insert(0, f"{int(parts[1]):02d}")
-        if plan[4]:
-            parts = str(plan[4]).split(':')
+        if plan[11]:
+            parts = str(plan[11]).split(':')
             if len(parts) >= 2:
                 self.end_hour_entry.delete(0, "end")
                 self.end_hour_entry.insert(0, f"{int(parts[0]):02d}")
                 self.end_minute_entry.delete(0, "end")
                 self.end_minute_entry.insert(0, f"{int(parts[1]):02d}")
 
-        self.location_box.set(plan[5] or "")
-        self.text_description.insert("0.0", plan[6] or "")
-        self.category_box.set(plan[9] or "")
-        self.entry_audience.insert(0, plan[8] or "")
+        self.location_box.set(plan[4] or "")
+        self.text_description.insert("0.0", plan[5] or "")
+        self.category_box.set(plan[12] or "")
+        self.entry_audience.insert(0, plan[7] or "")
 
     def _save(self):
         title = self.entry_title.get().strip()
@@ -920,7 +908,7 @@ class PlansViewFrame(ctk.CTkFrame):
     def load_plans(self):
         for widget in self.scrollable.winfo_children():
             widget.destroy()
-        plans = get_all_event_plans()
+        plans = get_all_event_plans(self.user_data['id'], self.user_data['role'])
         if not plans:
             lbl = ctk.CTkLabel(self.scrollable, text="Нет планов. Создайте первый план.",
                                text_color=COLOR_GRAY)
@@ -1058,7 +1046,7 @@ class MainAppFrame(ctk.CTkFrame):
     def load_upcoming_plans(self):
         for widget in self.upcoming_list_frame.winfo_children():
             widget.destroy()
-        all_plans = get_all_event_plans()
+        all_plans = get_all_event_plans(self.user_data['id'], self.user_data['role'])
         today = date.today()
         future_limit = today + timedelta(days=14)
         upcoming = []
@@ -1083,7 +1071,7 @@ class MainAppFrame(ctk.CTkFrame):
     def load_recent_news(self):
         for widget in self.recent_news_list.winfo_children():
             widget.destroy()
-        news_list = get_recent_news(limit=5)
+        news_list = get_recent_news(limit=5, user_id=self.user_data['id'], user_role=self.user_data['role'])
         if not news_list:
             lbl = ctk.CTkLabel(self.recent_news_list, text="Нет сгенерированных новостей",
                                text_color=COLOR_TEXT)
@@ -1096,7 +1084,7 @@ class MainAppFrame(ctk.CTkFrame):
                 lbl.pack(anchor="w", pady=2)
 
     def load_plan_list_for_quick(self):
-        plans = get_all_event_plans()
+        plans = get_all_event_plans(self.user_data['id'], self.user_data['role'])
         if not plans:
             self.quick_plan_combo.configure(values=["Нет доступных планов"])
             self.quick_plan_combo.set("Нет доступных планов")
@@ -1144,8 +1132,8 @@ class MainAppFrame(ctk.CTkFrame):
         popup.attributes('-topmost', True)
         popup.configure(fg_color=COLOR_BG)
 
-        frame = ctk.CTkFrame(popup, fg_color=COLOR_CARD, corner_radius=15,
-                            border_width=2, border_color="white")
+        frame = ctk.CTkFrame(popup, fg_color=COLOR_CARD, corner_radius=12,
+                             border_width=2, border_color="white")
         frame.pack(fill="both", expand=True, padx=0, pady=0)
 
         items = [
@@ -1161,12 +1149,12 @@ class MainAppFrame(ctk.CTkFrame):
 
             btn = ctk.CTkButton(btn_frame, text=text, command=cmd,
                                 fg_color="transparent", hover_color="#3A3450",
-                                anchor="w", height=35, font=ctk.CTkFont(size=13))
+                                anchor="w", height=32, font=ctk.CTkFont(size=12))
             btn.pack(side="left", fill="x", expand=True)
 
-            icon_label = ctk.CTkLabel(btn_frame, text=icon, font=ctk.CTkFont(size=13),
-                                    text_color=COLOR_TEXT, width=30)
-            icon_label.pack(side="right", padx=(0, 5))
+            icon_label = ctk.CTkLabel(btn_frame, text=icon, font=ctk.CTkFont(size=12),
+                                      text_color=COLOR_TEXT, width=25)
+            icon_label.pack(side="right", padx=(0, 3))
             icon_label.bind("<Button-1>", lambda e, c=cmd: c())
 
             if i < len(items) - 1:
@@ -1174,8 +1162,8 @@ class MainAppFrame(ctk.CTkFrame):
                 sep.pack(fill="x", padx=10, pady=2)
 
         popup.update_idletasks()
-        popup_width = popup.winfo_width()
-        popup_height = popup.winfo_height()
+        popup_width = popup.winfo_reqwidth()
+        popup_height = popup.winfo_reqheight()
 
         icon_x = source_widget.winfo_rootx()
         icon_y = source_widget.winfo_rooty()
@@ -1194,34 +1182,19 @@ class MainAppFrame(ctk.CTkFrame):
         popup_x = icon_right - popup_width - 45
         popup_y = icon_top
 
-        if popup_x < parent_x + 5:
-            popup_x = parent_x + 5
-        if popup_x + popup_width > parent_x + parent_width - 5:
-            popup_x = parent_x + parent_width - popup_width - 5
-        if popup_y + popup_height > parent_y + parent_height:
-            popup_y = icon_top - popup_height
-        if popup_y < parent_y + 5:
-            popup_y = parent_y + 5
+        if popup_x + popup_width > parent_x + parent_width:
+            popup_x = parent_x + parent_width - popup_width - 10
+        if popup_x < parent_x:
+            popup_x = parent_x + 10
 
-        screen_w = popup.winfo_screenwidth()
-        screen_h = popup.winfo_screenheight()
-        if popup_x + popup_width > screen_w:
-            popup_x = screen_w - popup_width - 10
-        if popup_x < 0:
-            popup_x = 10
-        if popup_y + popup_height > screen_h:
-            popup_y = screen_h - popup_height - 10
-        if popup_y < 0:
-            popup_y = 10
+        if popup_y + popup_height > parent_y + parent_height:
+            popup_y = parent_y + parent_height - popup_height - 10
+        if popup_y < parent_y:
+            popup_y = parent_y + 10
 
         popup.geometry(f"{popup_width}x{popup_height}+{int(popup_x)}+{int(popup_y)}")
 
-        def on_focus_out(event):
-            if not (event.widget == popup or event.widget == frame or
-                    (hasattr(event.widget, 'master') and event.widget.master == frame)):
-                popup.destroy()
-                self.profile_popup = None
-        popup.bind("<FocusOut>", on_focus_out)
+        popup.bind("<FocusOut>", lambda e: popup.destroy() or setattr(self, 'profile_popup', None))
         popup.bind("<Escape>", lambda e: popup.destroy() or setattr(self, 'profile_popup', None))
         popup.focus_set()
 

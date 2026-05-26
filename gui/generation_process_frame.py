@@ -69,7 +69,7 @@ class GenerationProcessFrame(ctk.CTkFrame):
         self.status_label.pack(pady=(0, 10))
 
     def load_plan_info(self):
-        plan = get_event_plan_by_id(self.plan_id)
+        plan = get_event_plan_by_id(self.plan_id, self.user_data['id'], self.user_data['role'])
         if not plan:
             show_centered_dialog(self, "Ошибка", "План не найден", "error")
             self.on_back()
@@ -95,7 +95,7 @@ class GenerationProcessFrame(ctk.CTkFrame):
 
     def _generate_thread(self):
         try:
-            plan_data_raw = get_event_plan_by_id(self.plan_id)
+            plan_data_raw = get_event_plan_by_id(self.plan_id, self.user_data['id'], self.user_data['role'])
             if not plan_data_raw:
                 self.after(0, lambda: show_centered_dialog(self, "Ошибка", "План не найден", "error"))
                 self.after(0, self._reset_buttons)

@@ -26,7 +26,6 @@ class ProfileFrame(ctk.CTkFrame):
         self.on_back = on_back
         self.pack(fill="both", expand=True)
 
-        # Верхняя панель
         top_frame = ctk.CTkFrame(self, fg_color="transparent")
         top_frame.pack(fill="x", padx=20, pady=(20, 10))
         back_btn = ctk.CTkButton(top_frame, text="← На главную", command=self.on_back,
@@ -36,30 +35,22 @@ class ProfileFrame(ctk.CTkFrame):
         ctk.CTkLabel(top_frame, text="Личный кабинет",
                      font=ctk.CTkFont(size=20, weight="bold"), text_color=COLOR_PRIMARY).pack(side="left", padx=20)
 
-        # Основной скролл
         self.scrollable = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.scrollable.pack(fill="both", expand=True, padx=20, pady=10)
 
-        # Блок информации о пользователе
         self.info_frame = ctk.CTkFrame(self.scrollable, fg_color=COLOR_CARD, corner_radius=15)
         self.info_frame.pack(fill="x", pady=(0, 15))
-
         ctk.CTkLabel(self.info_frame, text="👤 Информация о пользователе",
                      font=ctk.CTkFont(size=16, weight="bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
-
         self.load_user_info()
-
         change_pwd_btn = ctk.CTkButton(self.info_frame, text="🔑 Сменить пароль", command=self.change_password,
                                        fg_color="transparent", hover_color="#3A3450", width=150)
         change_pwd_btn.pack(anchor="w", padx=15, pady=(5, 15))
 
-        # Блок своих новостей
         news_frame = ctk.CTkFrame(self.scrollable, fg_color=COLOR_CARD, corner_radius=15)
         news_frame.pack(fill="both", expand=True)
-
         ctk.CTkLabel(news_frame, text="📰 Мои сгенерированные новости",
                      font=ctk.CTkFont(size=16, weight="bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
-
         self.news_list = ctk.CTkScrollableFrame(news_frame, fg_color="transparent", height=300)
         self.news_list.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
@@ -69,7 +60,6 @@ class ProfileFrame(ctk.CTkFrame):
         user = get_user_by_id(self.user_data['id'])
         if not user:
             return
-        # user – словарь с ключами: id, username, email, role, is_active, created_at, last_login
         info_text = f"Логин: {user['username']}\nEmail: {user['email']}\nРоль: {user['role']}\nЗарегистрирован: {user['created_at']}\nПоследний вход: {user['last_login'] or 'никогда'}"
         info_label = ctk.CTkLabel(self.info_frame, text=info_text, font=ctk.CTkFont(size=13),
                                   text_color=COLOR_TEXT, justify="left", anchor="w")
@@ -85,7 +75,6 @@ class ProfileFrame(ctk.CTkFrame):
             lbl.pack(anchor="w", pady=5)
             return
         for news in news_list:
-            # news: (id, text, gen_date, approved, rating, plan_title)
             news_id, text, gen_date, approved, rating, plan_title = news
             card = ctk.CTkFrame(self.news_list, fg_color=COLOR_CARD, corner_radius=10)
             card.pack(fill="x", pady=5, padx=5)
@@ -93,7 +82,7 @@ class ProfileFrame(ctk.CTkFrame):
             info_frame = ctk.CTkFrame(card, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
 
-            status_text = "✅ Утверждена" if approved else "🟡 Не утверждена"
+            status_text = f"✅ Утверждена" if approved else "🟡 Не утверждена"
             header = f"{gen_date} | {status_text} | Рейтинг: {rating or 'нет'} | План: {plan_title}"
             ctk.CTkLabel(info_frame, text=header, font=ctk.CTkFont(size=12), text_color=COLOR_GRAY).pack(anchor="w")
             short_text = text[:150] + "..." if len(text) > 150 else text
@@ -140,7 +129,6 @@ class ProfileFrame(ctk.CTkFrame):
             if new != confirm:
                 show_centered_dialog(dialog, "Ошибка", "Новые пароли не совпадают", "error")
                 return
-            # Проверяем старый пароль
             user = get_user_by_id(self.user_data['id'])
             if not user or not bcrypt.checkpw(old.encode(), user['password_hash'].encode()):
                 show_centered_dialog(dialog, "Ошибка", "Неверный старый пароль", "error")

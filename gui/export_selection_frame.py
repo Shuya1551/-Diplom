@@ -5,7 +5,7 @@
 import customtkinter as ctk
 from tkinter import filedialog
 from functools import partial
-from datetime import datetime  # добавлен импорт
+from datetime import datetime
 
 from repositories.generated_news_repository import get_all_generated_news
 from services.document_exporter import export_to_docx, export_to_xlsx
@@ -58,14 +58,12 @@ class ExportSelectionFrame(ctk.CTkFrame):
         for widget in self.scrollable.winfo_children():
             widget.destroy()
         self.checkboxes.clear()
-
-        news_list = get_all_generated_news()
+        news_list = get_all_generated_news(self.user_data['id'], self.user_data['role'])
         if not news_list:
             lbl = ctk.CTkLabel(self.scrollable, text="Нет сгенерированных новостей",
                                text_color=COLOR_GRAY)
             lbl.pack(pady=20)
             return
-
         for news in news_list:
             news_id = news[0]
             text = news[1]
@@ -89,7 +87,7 @@ class ExportSelectionFrame(ctk.CTkFrame):
             text_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
             text_frame.grid(row=0, column=1, sticky="w")
 
-            status_text = "✅ Утверждена" if approved else "🟡 Не утверждена"
+            status_text = f"✅ Утверждена" if approved else "🟡 Не утверждена"
             header = f"{gen_date} | {status_text} | Рейтинг: {rating or 'нет'} | План: {plan_title}"
             ctk.CTkLabel(text_frame, text=header, font=ctk.CTkFont(size=12), text_color=COLOR_GRAY).pack(anchor="w")
             short_text = text[:200] + "..." if len(text) > 200 else text
@@ -121,7 +119,7 @@ class ExportSelectionFrame(ctk.CTkFrame):
             show_centered_dialog(self, "Предупреждение", "Не выбрано ни одной новости", "warning")
             return
 
-        all_news = get_all_generated_news()
+        all_news = get_all_generated_news(self.user_data['id'], self.user_data['role'])
         news_dict = {n[0]: n for n in all_news}
         export_data = []
         for news_id in selected:
@@ -135,9 +133,8 @@ class ExportSelectionFrame(ctk.CTkFrame):
                 'rating': n[4]
             })
 
-        # Диалог выбора формата с тремя кнопками
         choice = show_centered_dialog(self, "Выбор формата", "Выберите формат экспорта:", "question",
-                                    ("Word (.docx)", "Excel (.xlsx)", "Отмена"))
+                                      ("Word (.docx)", "Excel (.xlsx)", "Отмена"))
         if not choice or choice == "Отмена":
             return
 
