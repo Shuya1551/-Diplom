@@ -440,63 +440,64 @@ class AboutPopup(ctk.CTkToplevel):
         super().__init__(parent)
         self.anchor_widget = anchor_widget
         self.overrideredirect(True)
-        self.configure(fg_color=COLOR_CARD)
-        self.geometry("280x180")
+        self.configure(fg_color=COLOR_BG)
 
-        self.create_widgets()
-        self.bind("<FocusOut>", self.on_focus_out)
-        self._position_popup()
-        self.focus_set()
-
-    def create_widgets(self):
-        frame = ctk.CTkFrame(self, fg_color="transparent")
-        frame.pack(fill="both", expand=True, padx=15, pady=15)
+        frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=15,
+                             border_width=2, border_color="white")
+        frame.pack(fill="both", expand=True, padx=0, pady=0)
 
         ctk.CTkLabel(frame, text="ℹ️ О программе", font=ctk.CTkFont(size=16, weight="bold"),
-                     text_color=COLOR_PRIMARY).pack(anchor="w", pady=(0, 10))
+                     text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
         ctk.CTkLabel(frame, text="Автор: Головатый И.Н.", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", pady=2)
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
         ctk.CTkLabel(frame, text="Группа: Идс23Б", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", pady=2)
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
         ctk.CTkLabel(frame, text="Год: 2026", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", pady=2)
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
         ctk.CTkLabel(frame, text="Версия: 1.0", font=ctk.CTkFont(size=13),
-                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", pady=2)
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=15, pady=2)
         ctk.CTkLabel(frame, text="Генератор новостей на основе нейросети ruGPT-3",
-                     font=ctk.CTkFont(size=11), text_color=COLOR_GRAY, wraplength=260).pack(anchor="w", pady=(10, 0))
+                     font=ctk.CTkFont(size=11), text_color=COLOR_GRAY, wraplength=260).pack(anchor="w", padx=15, pady=(10, 15))
 
-    def _position_popup(self):
-        parent = self.anchor_widget.winfo_toplevel()
+        # Позиционирование
+        self.update_idletasks()
+        popup_width = self.winfo_width()
+        popup_height = self.winfo_height()
+
+        anchor_x = anchor_widget.winfo_rootx()
+        anchor_y = anchor_widget.winfo_rooty()
+        anchor_width = anchor_widget.winfo_width()
+        anchor_height = anchor_widget.winfo_height()
+
+        anchor_right = anchor_x + anchor_width
+        anchor_top = anchor_y
+
         parent_x = parent.winfo_rootx()
         parent_y = parent.winfo_rooty()
-        parent_w = parent.winfo_width()
-        parent_h = parent.winfo_height()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
 
-        anchor_x = self.anchor_widget.winfo_rootx()
-        anchor_y = self.anchor_widget.winfo_rooty()
-        anchor_w = self.anchor_widget.winfo_width()
-        anchor_h = self.anchor_widget.winfo_height()
+        offset = 40
+        x = anchor_right - popup_width - offset
+        y = anchor_top
 
-        self.update_idletasks()
-        pop_w = self.winfo_width()
-        pop_h = self.winfo_height()
+        if x < parent_x + 5:
+            x = parent_x + 5
+        if x + popup_width > parent_x + parent_width - 5:
+            x = parent_x + parent_width - popup_width - 5
 
-        x = anchor_x - pop_w
-        y = anchor_y + anchor_h
+        if y + popup_height > parent_y + parent_height:
+            y = anchor_top - popup_height
+        if y < parent_y + 5:
+            y = parent_y + 5
 
-        if x < parent_x:
-            x = anchor_x + anchor_w
-        if x + pop_w > parent_x + parent_w:
-            x = parent_x + parent_w - pop_w
-        if x < parent_x:
-            x = parent_x
+        self.geometry(f"{popup_width}x{popup_height}+{int(x)}+{int(y)}")
 
-        if y + pop_h > parent_y + parent_h:
-            y = anchor_y - pop_h
-        if y < parent_y:
-            y = parent_y
+        self.focus_set()
+        self.bind("<FocusOut>", lambda e: self.destroy())
+        parent.bind("<Button-1>", lambda e: self.destroy(), add=True)
 
-        self.geometry(f"+{int(x)}+{int(y)}")
+        self.bind("<Escape>", lambda e: self.destroy())
 
     def on_focus_out(self, event):
         self.destroy()
@@ -1122,17 +1123,96 @@ class MainAppFrame(ctk.CTkFrame):
         AboutPopup(self, self.about_label)
 
     def show_profile_menu(self, source_widget):
-        menu = Menu(self.parent, tearoff=0, bg=COLOR_CARD, fg=COLOR_TEXT, activebackground=COLOR_SECONDARY)
-        menu.add_command(label="Личный кабинет", command=self.open_profile)
-        menu.add_command(label="Настройки", command=self.open_settings)
-        menu.add_separator()
-        menu.add_command(label="Выйти из профиля", command=self.logout)
-        menu.add_separator()
-        menu.add_command(label="Выйти из приложения", command=self.exit_app)
-        x = source_widget.winfo_rootx()
-        y = source_widget.winfo_rooty() + source_widget.winfo_height()
-        menu.post(x, y)
+        popup = ctk.CTkToplevel(self.parent)
+        popup.overrideredirect(True)
+        popup.configure(fg_color=COLOR_BG)
 
+        frame = ctk.CTkFrame(popup, fg_color=COLOR_CARD, corner_radius=15,
+                            border_width=2, border_color="white")
+        frame.pack(fill="both", expand=True, padx=0, pady=0)
+
+        items = [
+            ("Личный кабинет", "👤", self.open_profile),
+            ("Настройки", "⚙️", self.open_settings),
+            ("Выйти из профиля", "🚪", self.logout),
+            ("Выйти из приложения", "❌", self.exit_app)
+        ]
+
+        for i, (text, icon, cmd) in enumerate(items):
+            btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+            btn_frame.pack(fill="x", padx=10, pady=2)
+
+            btn = ctk.CTkButton(btn_frame, text=text, command=cmd,
+                                fg_color="transparent", hover_color="#3A3450",
+                                anchor="w", height=35, font=ctk.CTkFont(size=13))
+            btn.pack(side="left", fill="x", expand=True)
+
+            icon_label = ctk.CTkLabel(btn_frame, text=icon, font=ctk.CTkFont(size=13),
+                                    text_color=COLOR_TEXT, width=30)
+            icon_label.pack(side="right", padx=(0, 5))
+            icon_label.bind("<Button-1>", lambda e, c=cmd: c())
+
+            if i < len(items) - 1:
+                sep = ctk.CTkFrame(frame, height=1, fg_color=COLOR_GRAY)
+                sep.pack(fill="x", padx=10, pady=2)
+
+        popup.update_idletasks()
+        popup_width = popup.winfo_width()
+        popup_height = popup.winfo_height()
+
+        icon_x = source_widget.winfo_rootx()
+        icon_y = source_widget.winfo_rooty()
+        icon_width = source_widget.winfo_width()
+        icon_height = source_widget.winfo_height()
+
+        icon_right = icon_x + icon_width
+        icon_top = icon_y
+
+        parent = self.parent
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+
+        popup_x = icon_right - popup_width - 45
+        popup_y = icon_top
+
+        if popup_x + popup_width > parent_x + parent_width - 5:
+            popup_x = parent_x + parent_width - popup_width - 5
+        if popup_x < parent_x + 5:
+            popup_x = parent_x + 5
+
+        if popup_y + popup_height > parent_y + parent_height:
+            popup_y = icon_top - popup_height
+        if popup_y < parent_y + 5:
+            popup_y = parent_y + 5
+
+        popup.geometry(f"{popup_width}x{popup_height}+{int(popup_x)}+{int(popup_y)}")
+
+        def close_popup(event=None):
+            if event and event.widget:
+                widget = event.widget
+                while widget:
+                    if widget == popup or widget == frame:
+                        return
+                    widget = widget.master
+            popup.destroy()
+            try:
+                parent.unbind("<Button-1>", bind_id)
+            except:
+                pass
+
+        bind_id = parent.bind("<Button-1>", close_popup, add=True)
+
+        def on_focus_out(event):
+            if not (event.widget == popup or event.widget == frame or
+                    (hasattr(event.widget, 'master') and event.widget.master == frame)):
+                close_popup()
+        popup.bind("<FocusOut>", on_focus_out)
+
+        popup.bind("<Escape>", lambda e: close_popup())
+
+        popup.focus_set()
     def open_profile(self):
         from gui.profile_window import ProfileWindow
         ProfileWindow(self.parent, self.user_data)
