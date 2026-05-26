@@ -66,32 +66,42 @@ class SettingsWindow(ctk.CTkFrame):
 
         ctk.CTkLabel(self.generation_tab, text="Температура (0.1 – 1.0):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
-        self.temperature_var = ctk.DoubleVar()
-        temp_scale = ctk.CTkSlider(self.generation_tab, from_=0.1, to=1.0, number_of_steps=18,
-                                   variable=self.temperature_var, width=300)
+        self.temperature_var = ctk.StringVar()
+        temp_scale = ctk.CTkSlider(self.generation_tab, from_=0.1, to=1.0, number_of_steps=18, width=300)
         temp_scale.pack(anchor="w", padx=15, pady=5)
         self.temp_label = ctk.CTkLabel(self.generation_tab, text="", font=ctk.CTkFont(size=12), text_color=COLOR_GRAY)
         self.temp_label.pack(anchor="w", padx=15)
-        self.temperature_var.trace_add("write", lambda *a: self.temp_label.configure(text=f"{self.temperature_var.get():.2f}"))
+        def update_temp(*args):
+            try:
+                val = float(self.temperature_var.get())
+            except:
+                val = 0.7
+            temp_scale.set(val)
+            self.temp_label.configure(text=f"{val:.2f}")
+        self.temperature_var.trace_add("write", update_temp)
+        def on_scale_change(value):
+            self.temperature_var.set(f"{value:.2f}")
+            self.temp_label.configure(text=f"{value:.2f}")
+        temp_scale.configure(command=on_scale_change)
 
         ctk.CTkLabel(self.generation_tab, text="Макс. длина новости (токенов):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
-        self.max_tokens_var = ctk.IntVar()
+        self.max_tokens_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.max_tokens_var, width=100).pack(anchor="w", padx=15, pady=5)
 
         ctk.CTkLabel(self.generation_tab, text="Top-k (1-100):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
-        self.top_k_var = ctk.IntVar()
+        self.top_k_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.top_k_var, width=100).pack(anchor="w", padx=15, pady=5)
 
         ctk.CTkLabel(self.generation_tab, text="Top-p (0.0-1.0):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
-        self.top_p_var = ctk.DoubleVar()
+        self.top_p_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.top_p_var, width=100).pack(anchor="w", padx=15, pady=5)
 
         ctk.CTkLabel(self.generation_tab, text="Штраф за повторения (1.0-2.0):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
-        self.rep_penalty_var = ctk.DoubleVar()
+        self.rep_penalty_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.rep_penalty_var, width=100).pack(anchor="w", padx=15, pady=5)
 
     def create_export_tab(self):
@@ -126,12 +136,11 @@ class SettingsWindow(ctk.CTkFrame):
 
     def load_settings(self):
         self.model_path_var.set(get_setting("model_path", "./finetuned_rugpt3"))
-        self.temperature_var.set(float(get_setting("temperature", "0.7")))
-        self.temp_label.configure(text=f"{self.temperature_var.get():.2f}")
-        self.max_tokens_var.set(int(get_setting("max_new_tokens", "200")))
-        self.top_k_var.set(int(get_setting("top_k", "50")))
-        self.top_p_var.set(float(get_setting("top_p", "0.9")))
-        self.rep_penalty_var.set(float(get_setting("repetition_penalty", "1.2")))
+        self.temperature_var.set(get_setting("temperature", "0.7"))
+        self.max_tokens_var.set(str(int(get_setting("max_new_tokens", "200"))))
+        self.top_k_var.set(str(int(get_setting("top_k", "50"))))
+        self.top_p_var.set(get_setting("top_p", "0.9"))
+        self.rep_penalty_var.set(get_setting("repetition_penalty", "1.2"))
         self.export_dir_var.set(get_setting("export_default_dir", ""))
         self.default_format_combo.set(get_setting("default_export_format", "docx"))
         self.resolution_combo.set(get_setting("window_resolution", "1000x700"))
@@ -139,11 +148,11 @@ class SettingsWindow(ctk.CTkFrame):
 
     def save_all_settings(self):
         set_setting("model_path", self.model_path_var.get(), self.user_data['id'])
-        set_setting("temperature", str(self.temperature_var.get()), self.user_data['id'])
-        set_setting("max_new_tokens", str(self.max_tokens_var.get()), self.user_data['id'])
-        set_setting("top_k", str(self.top_k_var.get()), self.user_data['id'])
-        set_setting("top_p", str(self.top_p_var.get()), self.user_data['id'])
-        set_setting("repetition_penalty", str(self.rep_penalty_var.get()), self.user_data['id'])
+        set_setting("temperature", self.temperature_var.get(), self.user_data['id'])
+        set_setting("max_new_tokens", self.max_tokens_var.get(), self.user_data['id'])
+        set_setting("top_k", self.top_k_var.get(), self.user_data['id'])
+        set_setting("top_p", self.top_p_var.get(), self.user_data['id'])
+        set_setting("repetition_penalty", self.rep_penalty_var.get(), self.user_data['id'])
         set_setting("export_default_dir", self.export_dir_var.get(), self.user_data['id'])
         set_setting("default_export_format", self.default_format_combo.get(), self.user_data['id'])
         set_setting("window_resolution", self.resolution_combo.get(), self.user_data['id'])

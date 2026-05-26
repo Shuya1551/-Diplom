@@ -108,3 +108,7 @@ CREATE TABLE user_sessions (
 CREATE INDEX idx_event_plans_date ON event_plans(event_date);
 CREATE INDEX idx_generated_news_approved ON generated_news(is_approved);
 CREATE INDEX idx_generation_logs_timestamp ON generation_logs(timestamp);
+
+-- Добавление недостающих колонок (для совместимости с текущим кодом)
+ALTER TABLE event_plans ADD COLUMN IF NOT EXISTS category VARCHAR(100);
+ALTER TABLE generated_news ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);
