@@ -25,6 +25,7 @@ from gui.all_news_frame import AllNewsFrame
 from gui.export_selection_frame import ExportSelectionFrame
 from gui.profile_frame import ProfileFrame
 from gui.settings_window import SettingsWindow
+from gui.admin_window import AdminWindow   # <-- добавлен импорт
 from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
@@ -1139,9 +1140,13 @@ class MainAppFrame(ctk.CTkFrame):
         items = [
             ("Личный кабинет", "👤", lambda: self._close_and_switch("profile")),
             ("Настройки", "⚙️", lambda: self._close_and_switch("settings")),
+        ]
+        if self.user_data.get('role') == 'admin':
+            items.append(("Администрирование", "👑", lambda: self._close_and_switch("admin")))
+        items.extend([
             ("Выйти из профиля", "🚪", self._logout_and_close),
             ("Выйти из приложения", "❌", self._exit_app_and_close)
-        ]
+        ])
 
         for i, (text, icon, cmd) in enumerate(items):
             btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
@@ -1362,6 +1367,12 @@ class MainWindow(ctk.CTk):
                                                 self.news_generator,
                                                 self.switch_to_dashboard,
                                                 apply_window_callback=self.apply_window_settings)
+            self.current_frame.pack(fill="both", expand=True)
+        elif target == "admin":
+            self.current_frame.destroy()
+            self.current_frame = AdminWindow(self, self.current_user_data,
+                                             self.news_generator,
+                                             self.switch_to_dashboard)
             self.current_frame.pack(fill="both", expand=True)
 
     def switch_to_plan_edit(self, plan_id):
