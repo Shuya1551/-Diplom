@@ -22,6 +22,7 @@ from gui.generation_process_frame import GenerationProcessFrame
 from gui.news_view_frame import NewsViewFrame
 from gui.all_news_frame import AllNewsFrame
 from gui.export_selection_frame import ExportSelectionFrame
+from gui.profile_frame import ProfileFrame
 from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
@@ -1132,7 +1133,7 @@ class MainAppFrame(ctk.CTkFrame):
         frame.pack(fill="both", expand=True, padx=0, pady=0)
 
         items = [
-            ("Личный кабинет", "👤", self.open_profile),
+            ("Личный кабинет", "👤", lambda: self.switch_to_callback("profile")),
             ("Настройки", "⚙️", self.open_settings),
             ("Выйти из профиля", "🚪", self.logout),
             ("Выйти из приложения", "❌", self.exit_app)
@@ -1325,6 +1326,12 @@ class MainWindow(ctk.CTk):
                                                       self.news_generator,
                                                       self.switch_to_dashboard)
             self.current_frame.pack(fill="both", expand=True)
+        elif target == "profile":
+            self.current_frame.destroy()
+            self.current_frame = ProfileFrame(self, self.current_user_data,
+                                            self.news_generator,
+                                            self.switch_to_dashboard)
+            self.current_frame.pack(fill="both", expand=True)       
 
     def switch_to_plan_edit(self, plan_id):
         self.switch_to_frame("plan_edit", plan_id=plan_id)
