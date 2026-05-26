@@ -153,7 +153,8 @@ class GenerationFrame(ctk.CTkFrame):
             show_centered_dialog(self, "Ошибка", "Не удалось перейти к генерации", "error")
 
     def delete_news(self, news_id):
-        if show_centered_dialog(self, "Подтверждение", "Удалить выбранную новость?", "question", ("Да", "Нет")):
+        result = show_centered_dialog(self, "Подтверждение", "Удалить выбранную новость?", "question", ("Да", "Нет"))
+        if result == "Да":
             if delete_generated_news(news_id):
                 show_centered_dialog(self, "Успех", "Новость удалена", "success")
                 self.load_all_news()

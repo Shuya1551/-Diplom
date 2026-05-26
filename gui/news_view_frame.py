@@ -52,7 +52,8 @@ class NewsViewFrame(ctk.CTkFrame):
         if not self.news_id:
             show_centered_dialog(self, "Ошибка", "Не удалось определить ID новости", "error")
             return
-        if show_centered_dialog(self, "Подтверждение", "Удалить эту новость?", "question", ("Да", "Нет")):
+        result = show_centered_dialog(self, "Подтверждение", "Удалить эту новость?", "question", ("Да", "Нет"))
+        if result == "Да":
             if delete_generated_news(self.news_id):
                 show_centered_dialog(self, "Успех", "Новость удалена", "success")
                 self.on_back()

@@ -20,7 +20,8 @@ from services.gpt_news_generator import GPTNewsGenerator
 from gui.generation_frame import GenerationFrame
 from gui.generation_process_frame import GenerationProcessFrame
 from gui.news_view_frame import NewsViewFrame
-from gui.all_news_frame import AllNewsFrame   # новый импорт
+from gui.all_news_frame import AllNewsFrame
+from gui.export_selection_frame import ExportSelectionFrame
 from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
@@ -951,7 +952,8 @@ class PlansViewFrame(ctk.CTkFrame):
             delete_btn.pack(side="left", padx=5)
 
     def delete_plan(self, plan_id, plan_title):
-        if show_centered_dialog(self, "Подтверждение", f"Удалить план?\n\n{plan_title}", "question", ("Да", "Нет")):
+        result = show_centered_dialog(self, "Подтверждение", f"Удалить план?\n\n{plan_title}", "question", ("Да", "Нет"))
+        if result == "Да":
             delete_event_plan(plan_id)
             self.load_plans()
 
@@ -983,7 +985,7 @@ class MainAppFrame(ctk.CTkFrame):
 
         self.nav_frame = ctk.CTkFrame(self.main_frame, fg_color=COLOR_CARD, corner_radius=10)
         self.nav_frame.pack(fill="x", pady=(0, 20))
-        nav_buttons = [("Планы", self.switch_to_plans), ("Генерация", self.switch_to_generation), ("Отчёты", self.switch_to_reports)]
+        nav_buttons = [("Планы", self.switch_to_plans), ("Генерация", self.switch_to_generation), ("Экспорт", self.switch_to_reports)]
         for i, (text, command) in enumerate(nav_buttons):
             btn = ctk.CTkButton(self.nav_frame, text=text, command=command,
                                 fg_color="transparent", text_color=COLOR_TEXT,
@@ -1114,8 +1116,7 @@ class MainAppFrame(ctk.CTkFrame):
         self.switch_to_callback("generation")
 
     def switch_to_reports(self):
-        from gui.export_dialog import ExportDialog
-        ExportDialog(self.parent, self.user_data, 'xlsx')
+        self.switch_to_callback("export")
 
     def show_about_popup(self, event):
         AboutPopup(self, self.about_label)
@@ -1237,6 +1238,12 @@ class MainWindow(ctk.CTk):
             self.current_frame = AllNewsFrame(self, self.current_user_data,
                                               self.news_generator,
                                               self.switch_to_dashboard)
+            self.current_frame.pack(fill="both", expand=True)
+        elif target == "export":
+            self.current_frame.destroy()
+            self.current_frame = ExportSelectionFrame(self, self.current_user_data,
+                                                      self.news_generator,
+                                                      self.switch_to_dashboard)
             self.current_frame.pack(fill="both", expand=True)
 
     def switch_to_plan_edit(self, plan_id):
