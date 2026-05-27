@@ -19,7 +19,7 @@ Linux/macOS: source venv/bin/activate
 
 pip install -r requirements.txt
 
-4. **Создать базу данных PostgreSQL и выполнить дамп (файл news_generator_db.sql):
+4. **Создать базу данных PostgreSQL (news_generator_db) и выполнить дамп (файл news_generator_db.sql):
 
 psql -U postgres -c "CREATE DATABASE news_generator_db;"
 psql -U postgres -d news_generator_db -f news_generator_db.sql
