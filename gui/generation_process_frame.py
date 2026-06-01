@@ -6,12 +6,9 @@ import customtkinter as ctk
 import time
 import threading
 
-from repositories.event_plan_repository import get_event_plan_by_id
-from repositories.generated_news_repository import save_generated_news
-from repositories.log_repository import log_generation
+from services.file_storage import get_event_plan_by_id, save_generated_news, log_generation
 from utils import show_centered_dialog
 
-# ---------- ЦВЕТА ----------
 COLOR_PRIMARY = "#6C63FF"
 COLOR_BG = "#1E1A2E"
 COLOR_CARD = "#2A2438"
@@ -74,12 +71,12 @@ class GenerationProcessFrame(ctk.CTkFrame):
             show_centered_dialog(self, "Ошибка", "План не найден", "error")
             self.on_back()
             return
-        title = plan[1]
-        event_date = plan[2]
-        start_time = plan[3] or ""
-        end_time = plan[4] or ""
-        location = plan[5] or ""
-        description = plan[6] or ""
+        title = plan["title"]
+        event_date = plan["event_date"]
+        start_time = plan["event_time"] or ""
+        end_time = plan["event_end_time"] or ""
+        location = plan["location"] or ""
+        description = plan["description"] or ""
         info_text = f"📌 {title}\n📅 {event_date}  {start_time} - {end_time}\n📍 {location}\n📝 {description[:200] + '...' if len(description) > 200 else description}"
         info_label = ctk.CTkLabel(self.info_frame, text=info_text, font=ctk.CTkFont(size=13),
                                   text_color=COLOR_TEXT, justify="left", anchor="w")
@@ -101,14 +98,14 @@ class GenerationProcessFrame(ctk.CTkFrame):
                 self.after(0, self._reset_buttons)
                 return
             plan_dict = {
-                "title": plan_data_raw[1],
-                "event_date": plan_data_raw[2],
-                "event_time": plan_data_raw[3],
-                "location": plan_data_raw[4],
-                "description": plan_data_raw[5],
-                "speaker": plan_data_raw[6],
-                "audience": plan_data_raw[7],
-                "category": plan_data_raw[8] if len(plan_data_raw) > 8 else "",
+                "title": plan_data_raw["title"],
+                "event_date": plan_data_raw["event_date"],
+                "event_time": plan_data_raw["event_time"],
+                "location": plan_data_raw["location"],
+                "description": plan_data_raw["description"],
+                "speaker": plan_data_raw["speaker"],
+                "audience": plan_data_raw["audience"],
+                "category": plan_data_raw["category"],
             }
             start_time = time.time()
             generated_text = self.news_generator.generate_news(plan_dict)
@@ -139,10 +136,11 @@ class GenerationProcessFrame(ctk.CTkFrame):
         self.status_label.configure(text="")
 
     def save_news(self):
-        if not self.generated_text:
+        current_text = self.text_area.get("0.0", "end").strip()
+        if not current_text:
             show_centered_dialog(self, "Предупреждение", "Нет текста для сохранения", "warning")
             return
-        saved_id = save_generated_news(self.plan_id, self.generated_text, self.user_data['id'], rating=None)
+        saved_id = save_generated_news(self.plan_id, current_text, self.user_data['id'], rating=None)
         if saved_id:
             show_centered_dialog(self, "Успех", "Новость сохранена в базу данных", "success")
             self.save_btn.configure(state="disabled")

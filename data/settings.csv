@@ -1,0 +1,11 @@
+key,value,updated_by,updated_at
+model_path,./finetuned_rugpt3,1,2026-06-01T12:59:34.432007
+temperature,0.35,1,2026-06-01T12:59:34.443340
+max_new_tokens,500,1,2026-06-01T12:59:34.453619
+top_k,80,1,2026-06-01T12:59:34.471819
+top_p,0.4,1,2026-06-01T12:59:34.486665
+repetition_penalty,1.9,1,2026-06-01T12:59:34.496603
+export_default_dir,,1,2026-06-01T12:59:34.507795
+default_export_format,docx,1,2026-06-01T12:59:34.518195
+window_resolution,1000x700,1,2026-06-01T12:59:34.528008
+window_mode,Обычный,1,2026-06-01T12:59:34.538488

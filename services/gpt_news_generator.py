@@ -4,7 +4,7 @@
 
 import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from repositories.settings_repository import get_setting
+from services.file_storage import get_setting   # изменён импорт
 
 class GPTNewsGenerator:
     LOCAL_MODEL_PATH = "./finetuned_rugpt3"
@@ -31,25 +31,32 @@ class GPTNewsGenerator:
         except Exception as e:
             print(f"Критическая ошибка при загрузке модели: {e}")
             raise
-        
-    """
-    Генерирует текст новости на основе данных плана.
-    """
+
     def generate_news(self, plan_data: dict) -> str:
         title = plan_data.get('title', 'мероприятие')
         location = plan_data.get('location', '')
         description = plan_data.get('description', '')
         speaker = plan_data.get('speaker', '')
+        audience = plan_data.get('audience', '')
+        organizer = plan_data.get('organizer', '')
+        format_type = plan_data.get('format_type', '')
+        goal = plan_data.get('goal', '')
 
         prompt = (
             f"<s>Сгенерируй новостное сообщение о мероприятии по плану:\n"
-            f"Название: {title}\nМесто: {location}\nО чём: {description}\nСпикер: {speaker}\n"
+            f"Название: {title}\n"
+            f"Место: {location}\n"
+            f"Формат: {format_type}\n"
+            f"О чём: {description}\n"
+            f"Цель: {goal}\n"
+            f"Спикеры: {speaker}\n"
+            f"Аудитория: {audience}\n"
+            f"Организатор: {organizer}\n"
             f"Новость:"
         )
 
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(self.device)
 
-        # Получаем настройки из БД
         temperature = float(get_setting("temperature", "0.7"))
         max_new_tokens = int(get_setting("max_new_tokens", "200"))
         top_k = int(get_setting("top_k", "50"))
