@@ -44,14 +44,16 @@ ctk.set_default_color_theme("blue")
 
 _news_generator = None
 
-def get_news_generator():
+def get_news_generator(model_path=None):
     global _news_generator
     if _news_generator is None:
         try:
-            _news_generator = GPTNewsGenerator()
+            _news_generator = GPTNewsGenerator(initial_model_path=model_path)
         except Exception as e:
             show_centered_dialog(None, "Ошибка", f"Не удалось загрузить модель:\n{str(e)}", "error")
             return None
+    elif model_path and _news_generator.current_model_path != model_path:
+        _news_generator.switch_model(model_path)
     return _news_generator
 
 # ---------- ЗАГРУЗКА ГОРОДОВ И КАТЕГОРИЙ ИЗ CSV ----------
@@ -1481,7 +1483,9 @@ class MainWindow(ctk.CTk):
         # Инициализируем администратора при первом запуске
         init_admin_user()
 
-        self.news_generator = get_news_generator()
+        # Путь к базовой модели (или любой другой, которая загружается по умолчанию)
+        default_model = "./ruGPT3medium_based_on_gpt2"
+        self.news_generator = get_news_generator(default_model)
         if self.news_generator is None:
             self.destroy()
             return
