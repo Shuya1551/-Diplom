@@ -5,10 +5,9 @@
 import customtkinter as ctk
 from functools import partial
 
-from repositories.generated_news_repository import get_all_generated_news, delete_generated_news
+from services.file_storage import get_all_generated_news, delete_generated_news, get_event_plan_by_id
 from utils import show_centered_dialog
 
-# ---------- ЦВЕТА ----------
 COLOR_PRIMARY = "#6C63FF"
 COLOR_BG = "#1E1A2E"
 COLOR_CARD = "#2A2438"
@@ -29,10 +28,10 @@ class AllNewsFrame(ctk.CTkFrame):
         top_frame.pack(fill="x", padx=20, pady=(20, 10))
         back_btn = ctk.CTkButton(top_frame, text="← На главную", command=self.on_back,
                                  fg_color="transparent", text_color=COLOR_SECONDARY,
-                                 font=ctk.CTkFont(size=14), hover_color="#3A3450")
+                                 font=("Arial", 14), hover_color="#3A3450")
         back_btn.pack(side="left")
         ctk.CTkLabel(top_frame, text="Все сгенерированные новости",
-                     font=ctk.CTkFont(size=20, weight="bold"), text_color=COLOR_PRIMARY).pack(side="left", padx=20)
+                     font=("Arial", 20, "bold"), text_color=COLOR_PRIMARY).pack(side="left", padx=20)
 
         self.scrollable = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.scrollable.pack(fill="both", expand=True, padx=20, pady=10)
@@ -49,13 +48,14 @@ class AllNewsFrame(ctk.CTkFrame):
             lbl.pack(pady=20)
             return
         for news in news_list:
-            news_id = news[0]
-            text = news[1]
-            gen_date = news[2]
-            approved = news[3]
-            rating = news[4]
-            plan_id = news[5]
-            plan_title = news[6] if len(news) > 6 else f"План #{plan_id}"
+            news_id = int(news["id"])
+            text = news["generated_text"]
+            gen_date = news["generation_date"]
+            approved = news["is_approved"] == "True"
+            rating = news["rating"]
+            plan_id = int(news["event_plan_id"])
+            plan = get_event_plan_by_id(plan_id, self.user_data['id'], self.user_data['role'])
+            plan_title = plan["title"] if plan else f"План #{plan_id}"
 
             card = ctk.CTkFrame(self.scrollable, fg_color=COLOR_CARD, corner_radius=10)
             card.pack(fill="x", pady=5, padx=5)
@@ -65,9 +65,9 @@ class AllNewsFrame(ctk.CTkFrame):
 
             status_text = f"✅ Утверждена" if approved else "🟡 Не утверждена"
             header = f"{gen_date} | {status_text} | Рейтинг: {rating or 'нет'} | План: {plan_title}"
-            ctk.CTkLabel(info_frame, text=header, font=ctk.CTkFont(size=12), text_color=COLOR_GRAY).pack(anchor="w")
+            ctk.CTkLabel(info_frame, text=header, font=("Arial", 12), text_color=COLOR_GRAY).pack(anchor="w")
             short_text = text[:200] + "..." if len(text) > 200 else text
-            ctk.CTkLabel(info_frame, text=short_text, font=ctk.CTkFont(size=13),
+            ctk.CTkLabel(info_frame, text=short_text, font=("Arial", 13),
                          text_color=COLOR_TEXT, anchor="w", justify="left", wraplength=600).pack(anchor="w", pady=(5, 0))
 
             btn_frame = ctk.CTkFrame(card, fg_color="transparent")

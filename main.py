@@ -1,6 +1,5 @@
 """
 Главный модуль приложения.
-Навигация через переключение фреймов.
 """
 
 import customtkinter as ctk
@@ -12,11 +11,15 @@ import bcrypt
 import csv
 import os
 
-from database.db_connection import init_connection_pool, close_all_connections
-from repositories.user_repository import authenticate_user, create_user, get_role_id_by_name
-from repositories.event_plan_repository import get_all_event_plans, delete_event_plan, get_event_plan_by_id, create_event_plan, update_event_plan
-from repositories.generated_news_repository import get_recent_news
-from repositories.settings_repository import get_setting
+from services.file_storage import (
+    init_admin_user, authenticate_user, create_user,
+    get_all_event_plans, delete_event_plan, get_event_plan_by_id,
+    create_event_plan, update_event_plan,
+    get_recent_news, get_all_generated_news, save_generated_news,
+    delete_generated_news, get_news_by_user_id, get_setting, set_setting,
+    log_generation, get_all_generation_logs, get_generation_stats,
+    get_all_users, get_user_by_id, update_user, delete_user, change_password
+)
 from services.gpt_news_generator import GPTNewsGenerator
 from gui.generation_frame import GenerationFrame
 from gui.generation_process_frame import GenerationProcessFrame
@@ -25,7 +28,7 @@ from gui.all_news_frame import AllNewsFrame
 from gui.export_selection_frame import ExportSelectionFrame
 from gui.profile_frame import ProfileFrame
 from gui.settings_window import SettingsWindow
-from gui.admin_window import AdminWindow   # <-- добавлен импорт
+from gui.admin_window import AdminWindow
 from utils import show_centered_dialog
 
 # ---------- ЦВЕТА ----------
@@ -41,14 +44,16 @@ ctk.set_default_color_theme("blue")
 
 _news_generator = None
 
-def get_news_generator():
+def get_news_generator(model_path=None):
     global _news_generator
     if _news_generator is None:
         try:
-            _news_generator = GPTNewsGenerator()
+            _news_generator = GPTNewsGenerator(initial_model_path=model_path)
         except Exception as e:
             show_centered_dialog(None, "Ошибка", f"Не удалось загрузить модель:\n{str(e)}", "error")
             return None
+    elif model_path and _news_generator.current_model_path != model_path:
+        _news_generator.switch_model(model_path)
     return _news_generator
 
 # ---------- ЗАГРУЗКА ГОРОДОВ И КАТЕГОРИЙ ИЗ CSV ----------
@@ -121,7 +126,7 @@ class SearchBox(ctk.CTkFrame):
         self.completevalues = completevalues
         self.special_values = special_values or []
         self.var = ctk.StringVar()
-        self.entry = ctk.CTkEntry(self, textvariable=self.var, width=450, height=40, font=ctk.CTkFont(size=14))
+        self.entry = ctk.CTkEntry(self, textvariable=self.var, width=450, height=40, font=("Arial", 14))
         self.entry.pack(fill="x")
         self.entry.bind('<KeyRelease>', self.on_keyrelease)
         self.entry.bind('<FocusOut>', self.on_focus_out)
@@ -132,6 +137,54 @@ class SearchBox(ctk.CTkFrame):
         self.listbox = None
         self.current_filtered = []
         self.selected_index = -1
+
+        self.root = master.winfo_toplevel()
+        self._bind_root_events()
+
+    def _bind_root_events(self):
+        self.root.bind("<MouseWheel>", self._on_root_scroll, add=True)
+        self.root.bind("<Button-4>", self._on_root_scroll, add=True)
+        self.root.bind("<Button-5>", self._on_root_scroll, add=True)
+        self.root.bind("<Configure>", self._on_root_configure, add=True)
+        self.root.bind("<Button-1>", self._on_global_click, add=True)
+
+    def _unbind_root_events(self):
+        try:
+            self.root.unbind("<MouseWheel>", self._on_root_scroll)
+            self.root.unbind("<Button-4>", self._on_root_scroll)
+            self.root.unbind("<Button-5>", self._on_root_scroll)
+            self.root.unbind("<Configure>", self._on_root_configure)
+            self.root.unbind("<Button-1>", self._on_global_click)
+        except:
+            pass
+
+    def _on_root_scroll(self, event):
+        if self.listbox_window and self.listbox_window.winfo_exists() and self.listbox_window.winfo_viewable():
+            try:
+                widget_under_cursor = self.root.winfo_containing(event.x_root, event.y_root)
+                if widget_under_cursor == self.listbox:
+                    return
+            except:
+                pass
+            self.hide_listbox()
+
+    def _on_root_configure(self, event):
+        if self.listbox_window and self.listbox_window.winfo_exists() and self.listbox_window.winfo_viewable():
+            self.hide_listbox()
+
+    def _on_global_click(self, event):
+        if not (self.listbox_window and self.listbox_window.winfo_exists() and self.listbox_window.winfo_viewable()):
+            return
+        if event.widget == self.entry:
+            return
+        if event.widget == self.listbox:
+            return
+        try:
+            if self.listbox_window.winfo_containing(event.x_root, event.y_root):
+                return
+        except:
+            pass
+        self.hide_listbox()
 
     def on_keyrelease(self, event):
         typed = self.var.get()
@@ -155,6 +208,10 @@ class SearchBox(ctk.CTkFrame):
             self.listbox.pack(fill=tk.BOTH, expand=True)
             self.listbox.bind('<ButtonRelease-1>', self.on_listbox_click)
             self.listbox.bind('<Escape>', self.hide_listbox)
+            self.listbox.bind('<MouseWheel>', self._on_listbox_mousewheel)
+            self.listbox.bind('<Button-4>', self._on_listbox_mousewheel)
+            self.listbox.bind('<Button-5>', self._on_listbox_mousewheel)
+
         self.listbox.delete(0, tk.END)
         for item in self.current_filtered:
             self.listbox.insert(tk.END, item)
@@ -164,6 +221,18 @@ class SearchBox(ctk.CTkFrame):
         height = min(6, len(self.current_filtered)) * 24 + 5
         self.listbox_window.geometry(f"{width}x{height}+{x}+{y}")
         self.listbox_window.deiconify()
+
+    def _on_listbox_mousewheel(self, event):
+        if self.listbox is None:
+            return
+        if event.num == 4:
+            delta = -1
+        elif event.num == 5:
+            delta = 1
+        else:
+            delta = -1 * (event.delta // 120) if event.delta else 0
+        self.listbox.yview_scroll(delta, "units")
+        return "break"
 
     def hide_listbox(self, event=None):
         if self.listbox_window and self.listbox_window.winfo_exists():
@@ -182,7 +251,7 @@ class SearchBox(ctk.CTkFrame):
         self.entry.focus_set()
 
     def on_down_arrow(self, event):
-        if not self.listbox_window or not self.listbox_window.winfo_viewable():
+        if not self.listbox_window or not self.listbox_window.winfo_exists() or not self.listbox_window.winfo_viewable():
             self._update_and_show_listbox()
             if not self.current_filtered:
                 return
@@ -199,7 +268,7 @@ class SearchBox(ctk.CTkFrame):
         return "break"
 
     def on_up_arrow(self, event):
-        if self.listbox_window and self.listbox_window.winfo_viewable() and self.listbox:
+        if self.listbox_window and self.listbox_window.winfo_exists() and self.listbox_window.winfo_viewable() and self.listbox:
             if self.selected_index > 0:
                 self.selected_index -= 1
             else:
@@ -214,6 +283,10 @@ class SearchBox(ctk.CTkFrame):
 
     def set(self, value):
         self.var.set(value)
+
+    def destroy(self):
+        self._unbind_root_events()
+        super().destroy()
 
 # ---------- ВЫПАДАЮЩИЙ КАЛЕНДАРЬ ----------
 class CalendarDropdown(ctk.CTkToplevel):
@@ -244,7 +317,7 @@ class CalendarDropdown(ctk.CTkToplevel):
         self.prev_btn = ctk.CTkButton(self.nav_frame, text="◀", width=30, command=self.prev_month,
                                       fg_color="transparent", text_color=COLOR_SECONDARY)
         self.prev_btn.pack(side="left")
-        self.month_label = ctk.CTkLabel(self.nav_frame, text="", font=ctk.CTkFont(size=14, weight="bold"))
+        self.month_label = ctk.CTkLabel(self.nav_frame, text="", font=("Arial", 14, "bold"))
         self.month_label.pack(side="left", expand=True)
         self.next_btn = ctk.CTkButton(self.nav_frame, text="▶", width=30, command=self.next_month,
                                       fg_color="transparent", text_color=COLOR_SECONDARY)
@@ -254,7 +327,7 @@ class CalendarDropdown(ctk.CTkToplevel):
         days_frame.pack(fill="x", padx=10)
         weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         for i, d in enumerate(weekdays):
-            label = ctk.CTkLabel(days_frame, text=d, width=35, font=ctk.CTkFont(size=12))
+            label = ctk.CTkLabel(days_frame, text=d, width=35, font=("Arial", 12))
             label.grid(row=0, column=i, padx=2, pady=2)
 
         self.calendar_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -314,25 +387,33 @@ class TimePickerPopup(ctk.CTkToplevel):
         self.after_id = None
 
         self.overrideredirect(True)
+        self.attributes('-topmost', True)
+        self.transient(parent)
+        self.lift()
         self.configure(fg_color=COLOR_CARD)
         self.geometry("180x220")
 
+        # Позиционирование под полем ввода
         x = entry_widget.winfo_rootx()
         y = entry_widget.winfo_rooty() + entry_widget.winfo_height()
         self.geometry(f"+{x}+{y}")
 
         self.create_widgets()
-        self.bind("<FocusOut>", self.on_focus_out)
         self.focus_set()
+        self.grab_set()
+        self.bind("<FocusOut>", self.on_focus_out)
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind_all("<Button-1>", self.on_global_click, add=True)
 
     def create_widgets(self):
+        """Создаёт элементы управления: часы, минуты, кнопки +/-, OK."""
         main_frame = ctk.CTkFrame(self, fg_color="transparent")
         main_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
         # Часы
         hour_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         hour_frame.pack(side="left", expand=True, fill="both")
-        ctk.CTkLabel(hour_frame, text="Часы", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
+        ctk.CTkLabel(hour_frame, text="Часы", font=("Arial", 12)).pack(pady=(0, 5))
 
         self.hour_up_btn = ctk.CTkButton(hour_frame, text="▲", width=60,
                                          fg_color="transparent", text_color=COLOR_SECONDARY)
@@ -350,12 +431,13 @@ class TimePickerPopup(ctk.CTkToplevel):
         self.hour_down_btn.bind("<ButtonPress-1>", self.on_hour_down_press)
         self.hour_down_btn.bind("<ButtonRelease-1>", self.on_release)
 
-        ctk.CTkLabel(main_frame, text=":", font=ctk.CTkFont(size=24)).pack(side="left", padx=10)
+        # Разделитель
+        ctk.CTkLabel(main_frame, text=":", font=("Arial", 24)).pack(side="left", padx=10)
 
         # Минуты
         minute_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         minute_frame.pack(side="left", expand=True, fill="both")
-        ctk.CTkLabel(minute_frame, text="Минуты", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
+        ctk.CTkLabel(minute_frame, text="Минуты", font=("Arial", 12)).pack(pady=(0, 5))
 
         self.minute_up_btn = ctk.CTkButton(minute_frame, text="▲", width=60,
                                            fg_color="transparent", text_color=COLOR_SECONDARY)
@@ -373,10 +455,12 @@ class TimePickerPopup(ctk.CTkToplevel):
         self.minute_down_btn.bind("<ButtonPress-1>", self.on_minute_down_press)
         self.minute_down_btn.bind("<ButtonRelease-1>", self.on_release)
 
+        # Кнопка OK
         ok_btn = ctk.CTkButton(self, text="OK", command=self.select_time,
                                fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY)
         ok_btn.pack(pady=(0, 10))
 
+    # ----- Логика повтора при удержании кнопок -----
     def on_hour_up_press(self, event):
         self.hour_increment()
         self.after_id = self.after(200, self.repeat_hour_up)
@@ -435,8 +519,34 @@ class TimePickerPopup(ctk.CTkToplevel):
             self.callback(self.hour, self.minute)
         self.destroy()
 
+    # ----- Закрытие при клике вне -----
+    def on_global_click(self, event):
+        if not self.winfo_exists():
+            return
+        if event.widget == self.entry_widget:
+            return
+        try:
+            toplevel = event.widget.winfo_toplevel()
+            if toplevel == self:
+                return
+        except:
+            pass
+        self.destroy()
+
     def on_focus_out(self, event):
         self.destroy()
+
+    # ----- Безопасное уничтожение -----
+    def destroy(self):
+        try:
+            self.unbind_all("<Button-1>")
+        except:
+            pass
+        try:
+            self.grab_release()
+        except:
+            pass
+        super().destroy()
 
 # ---------- ВСПЛЫВАЮЩЕЕ ОКНО "О ПРОГРАММЕ" ----------
 class AboutPopup(ctk.CTkToplevel):
@@ -519,7 +629,7 @@ class LoginFrame(ctk.CTkFrame):
         self.top_bar.pack(fill="x", padx=15, pady=(10, 0))
         self.back_btn = ctk.CTkButton(self.top_bar, text="←", width=30, height=30,
                                       fg_color="transparent", text_color=COLOR_SECONDARY,
-                                      font=ctk.CTkFont(size=24), command=self.hide_register)
+                                      font=("Arial", 24), command=self.hide_register)
         self.back_btn.pack(side="left")
         self.back_btn.pack_forget()
 
@@ -529,11 +639,11 @@ class LoginFrame(ctk.CTkFrame):
         self.login_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.login_frame.pack(fill="both", expand=True)
 
-        ctk.CTkLabel(self.login_frame, text="Генератор новостей", font=ctk.CTkFont(size=22, weight="bold"),
+        ctk.CTkLabel(self.login_frame, text="Генератор новостей", font=("Arial", 22, "bold"),
                      text_color=COLOR_PRIMARY).pack(pady=(0, 5))
-        ctk.CTkLabel(self.login_frame, text="Добро пожаловать", font=ctk.CTkFont(size=18),
+        ctk.CTkLabel(self.login_frame, text="Добро пожаловать", font=("Arial", 18),
                      text_color=COLOR_TEXT).pack(pady=(0, 5))
-        ctk.CTkLabel(self.login_frame, text="Войдите в свой аккаунт", font=ctk.CTkFont(size=12),
+        ctk.CTkLabel(self.login_frame, text="Войдите в свой аккаунт", font=("Arial", 12),
                      text_color=COLOR_TEXT).pack(pady=(0, 15))
 
         ctk.CTkLabel(self.login_frame, text="Email / Логин", text_color=COLOR_TEXT).pack(anchor="w")
@@ -552,7 +662,7 @@ class LoginFrame(ctk.CTkFrame):
 
         self.login_btn = ctk.CTkButton(self.login_frame, text="ВОЙТИ", command=self.do_login,
                                        height=40, fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY,
-                                       font=ctk.CTkFont(size=14, weight="bold"))
+                                       font=("Arial", 14, "bold"))
         self.login_btn.pack(fill="x", pady=(10, 5))
 
         self.register_label = ctk.CTkLabel(self.login_frame, text="Нет аккаунта? Зарегистрироваться",
@@ -570,36 +680,32 @@ class LoginFrame(ctk.CTkFrame):
             widget.destroy()
         self.register_frame.pack(fill="both", expand=True)
 
-        ctk.CTkLabel(self.register_frame, text="Регистрация", font=ctk.CTkFont(size=20, weight="bold"),
-                     text_color=COLOR_PRIMARY).pack(pady=(0, 10))
+        ctk.CTkLabel(self.register_frame, text="Регистрация", font=("Arial", 20, "bold"),
+                    text_color=COLOR_PRIMARY).pack(pady=(0, 10))
 
         ctk.CTkLabel(self.register_frame, text="Логин", text_color=COLOR_TEXT).pack(anchor="w")
         self.reg_login = ctk.CTkEntry(self.register_frame, placeholder_text="Придумайте логин",
-                                      fg_color="#3A3450", border_color=COLOR_PRIMARY)
+                                    fg_color="#3A3450", border_color=COLOR_PRIMARY)
         self.reg_login.pack(fill="x", pady=(5, 10))
 
         ctk.CTkLabel(self.register_frame, text="Email", text_color=COLOR_TEXT).pack(anchor="w")
         self.reg_email = ctk.CTkEntry(self.register_frame, placeholder_text="your@email.com",
-                                      fg_color="#3A3450", border_color=COLOR_PRIMARY)
+                                    fg_color="#3A3450", border_color=COLOR_PRIMARY)
         self.reg_email.pack(fill="x", pady=(5, 10))
 
         ctk.CTkLabel(self.register_frame, text="Пароль", text_color=COLOR_TEXT).pack(anchor="w")
         self.reg_password = ctk.CTkEntry(self.register_frame, show="*", placeholder_text="минимум 4 символа",
-                                         fg_color="#3A3450", border_color=COLOR_PRIMARY)
+                                        fg_color="#3A3450", border_color=COLOR_PRIMARY)
         self.reg_password.pack(fill="x", pady=(5, 10))
 
         ctk.CTkLabel(self.register_frame, text="Подтвердите пароль", text_color=COLOR_TEXT).pack(anchor="w")
         self.reg_password2 = ctk.CTkEntry(self.register_frame, show="*", fg_color="#3A3450", border_color=COLOR_PRIMARY)
         self.reg_password2.pack(fill="x", pady=(5, 10))
 
-        ctk.CTkLabel(self.register_frame, text="Роль", text_color=COLOR_TEXT).pack(anchor="w")
-        self.reg_role = ctk.CTkComboBox(self.register_frame, values=["user", "manager"], state="readonly",
-                                        fg_color="#3A3450", border_color=COLOR_PRIMARY, button_color=COLOR_PRIMARY)
-        self.reg_role.set("user")
-        self.reg_role.pack(fill="x", pady=(5, 10))
+        # Роль удалена – всегда будет "user"
 
         self.register_btn = ctk.CTkButton(self.register_frame, text="Зарегистрироваться", command=self.do_register,
-                                          fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY)
+                                        fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY)
         self.register_btn.pack(pady=(15, 5))
 
     def hide_register(self):
@@ -624,7 +730,6 @@ class LoginFrame(ctk.CTkFrame):
         email = self.reg_email.get().strip()
         password = self.reg_password.get()
         password2 = self.reg_password2.get()
-        role_name = self.reg_role.get()
         if not login or not email or not password:
             show_centered_dialog(self, "Ошибка", "Заполните все поля", "error")
             return
@@ -634,12 +739,9 @@ class LoginFrame(ctk.CTkFrame):
         if len(password) < 4:
             show_centered_dialog(self, "Ошибка", "Пароль должен быть не менее 4 символов", "error")
             return
-        role_id = get_role_id_by_name(role_name)
-        if not role_id:
-            show_centered_dialog(self, "Ошибка", "Роль не найдена", "error")
-            return
+        # Роль теперь всегда user (is_admin=False)
         pass_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        user_id = create_user(login, pass_hash, email, role_id, is_active=True)
+        user_id = create_user(login, pass_hash, email, is_admin=False)
         if user_id:
             show_centered_dialog(self, "Успех", f"Пользователь {login} зарегистрирован! Теперь войдите.", "success")
             self.hide_register()
@@ -661,10 +763,10 @@ class PlanEditFrame(ctk.CTkFrame):
         top_frame.pack(fill="x", padx=30, pady=(20, 10))
         back_btn = ctk.CTkButton(top_frame, text="← Назад", command=self.on_back,
                                  fg_color="transparent", text_color=COLOR_SECONDARY,
-                                 font=ctk.CTkFont(size=14), hover_color="#3A3450")
+                                 font=("Arial", 14), hover_color="#3A3450")
         back_btn.pack(side="left")
         title = "Редактирование плана" if plan_id else "Создание нового плана"
-        ctk.CTkLabel(top_frame, text=title, font=ctk.CTkFont(size=22, weight="bold"),
+        ctk.CTkLabel(top_frame, text=title, font=("Arial", 22, "bold"),
                      text_color=COLOR_PRIMARY).pack(side="left", padx=30)
 
         self.scrollable = ctk.CTkScrollableFrame(self, fg_color="transparent")
@@ -682,87 +784,125 @@ class PlanEditFrame(ctk.CTkFrame):
         frame.grid_columnconfigure(1, weight=1)
         row = 0
 
-        # Название
-        ctk.CTkLabel(frame, text="Название мероприятия:*", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
-        self.entry_title = ctk.CTkEntry(frame, width=450, height=40, font=ctk.CTkFont(size=14))
+        # Название мероприятия
+        ctk.CTkLabel(frame, text="Название мероприятия:*", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        self.entry_title = ctk.CTkEntry(frame, width=450, height=40, font=("Arial", 14))
         self.entry_title.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Дата
-        ctk.CTkLabel(frame, text="Дата:*", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        # Дата проведения
+        ctk.CTkLabel(frame, text="Дата проведения:*", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.date_var = ctk.StringVar(value=datetime.now().strftime("%d.%m.%Y"))
         self.date_entry = ctk.CTkEntry(frame, textvariable=self.date_var, width=200, state="normal")
         self.date_entry.grid(row=row, column=1, sticky="w", pady=8)
         self.date_entry.bind("<Button-1>", self.show_calendar_dropdown)
 
         row += 1
-        # Время
-        ctk.CTkLabel(frame, text="Время проведения:", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        # Время проведения
+        ctk.CTkLabel(frame, text="Время проведения:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         time_frame = ctk.CTkFrame(frame, fg_color="transparent")
         time_frame.grid(row=row, column=1, sticky="w", pady=8)
 
-        ctk.CTkLabel(time_frame, text="Начало:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
+        ctk.CTkLabel(time_frame, text="Начало:", font=("Arial", 12)).pack(side="left", padx=(0, 5))
         self.start_hour_entry = ctk.CTkEntry(time_frame, width=50, justify="center")
         self.start_hour_entry.pack(side="left")
         self.start_hour_entry.insert(0, "00")
         self.start_hour_entry.bind("<Button-1>", lambda e: self.show_time_picker(True))
-        ctk.CTkLabel(time_frame, text=":", font=ctk.CTkFont(size=14)).pack(side="left")
+        ctk.CTkLabel(time_frame, text=":", font=("Arial", 14)).pack(side="left")
         self.start_minute_entry = ctk.CTkEntry(time_frame, width=50, justify="center")
         self.start_minute_entry.pack(side="left")
         self.start_minute_entry.insert(0, "00")
         self.start_minute_entry.bind("<Button-1>", lambda e: self.show_time_picker(True))
 
-        ctk.CTkLabel(time_frame, text="Окончание:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(15, 5))
+        ctk.CTkLabel(time_frame, text="Окончание:", font=("Arial", 12)).pack(side="left", padx=(15, 5))
         self.end_hour_entry = ctk.CTkEntry(time_frame, width=50, justify="center")
         self.end_hour_entry.pack(side="left")
         self.end_hour_entry.insert(0, "00")
         self.end_hour_entry.bind("<Button-1>", lambda e: self.show_time_picker(False))
-        ctk.CTkLabel(time_frame, text=":", font=ctk.CTkFont(size=14)).pack(side="left")
+        ctk.CTkLabel(time_frame, text=":", font=("Arial", 14)).pack(side="left")
         self.end_minute_entry = ctk.CTkEntry(time_frame, width=50, justify="center")
         self.end_minute_entry.pack(side="left")
         self.end_minute_entry.insert(0, "00")
         self.end_minute_entry.bind("<Button-1>", lambda e: self.show_time_picker(False))
 
         row += 1
-        # Место
-        ctk.CTkLabel(frame, text="Место проведения:", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        # Место проведения
+        ctk.CTkLabel(frame, text="Место проведения:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.location_box = SearchBox(frame, LOCATION_PRESET, special_values=["Другой город"])
         self.location_box.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Категория
-        ctk.CTkLabel(frame, text="Категория мероприятия:", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        # Количество участников
+        ctk.CTkLabel(frame, text="Количество участников:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        self.participants_entry = ctk.CTkEntry(frame, width=150, height=40, font=("Arial", 14))
+        self.participants_entry.grid(row=row, column=1, sticky="w", pady=8)
+
+        row += 1
+        # Категория мероприятия
+        ctk.CTkLabel(frame, text="Категория мероприятия:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
         self.category_box = SearchBox(frame, CATEGORY_PRESET, special_values=["Другое"])
         self.category_box.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Описание
-        ctk.CTkLabel(frame, text="Описание мероприятия:", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="ne", pady=8, padx=(0, 15))
-        self.text_description = ctk.CTkTextbox(frame, height=120, width=450, font=ctk.CTkFont(size=13))
-        self.text_description.grid(row=row, column=1, sticky="w", pady=8)
+        # Формат проведения (новое поле)
+        ctk.CTkLabel(frame, text="Формат проведения:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        self.format_combo = ctk.CTkComboBox(frame, values=["Очный", "Онлайн", "Гибрид"],
+                                            width=200, state="readonly")
+        self.format_combo.set("Очный")
+        self.format_combo.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
-        # Аудитория
-        ctk.CTkLabel(frame, text="Аудитория (кому предназначено):", font=ctk.CTkFont(size=14),
-                     text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
-        self.entry_audience = ctk.CTkEntry(frame, width=450, height=40, font=ctk.CTkFont(size=14))
+        # Спикеры / Ведущие (новое поле)
+        ctk.CTkLabel(frame, text="Спикеры / Ведущие:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        self.entry_speaker = ctk.CTkEntry(frame, width=450, height=40, font=("Arial", 14))
+        self.entry_speaker.grid(row=row, column=1, sticky="w", pady=8)
+
+        row += 1
+        # Целевая аудитория (новое поле)
+        ctk.CTkLabel(frame, text="Целевая аудитория:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        self.entry_audience = ctk.CTkEntry(frame, width=450, height=40, font=("Arial", 14))
         self.entry_audience.grid(row=row, column=1, sticky="w", pady=8)
 
         row += 1
+        # Организатор / Контактное лицо (новое поле)
+        ctk.CTkLabel(frame, text="Организатор / Контактное лицо:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="e", pady=8, padx=(0, 15))
+        self.entry_organizer = ctk.CTkEntry(frame, width=450, height=40, font=("Arial", 14))
+        self.entry_organizer.grid(row=row, column=1, sticky="w", pady=8)
+
+        row += 1
+        # Описание мероприятия (многострочное)
+        ctk.CTkLabel(frame, text="Описание мероприятия:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="ne", pady=8, padx=(0, 15))
+        self.text_description = ctk.CTkTextbox(frame, height=120, width=450, font=("Arial", 13))
+        self.text_description.grid(row=row, column=1, sticky="w", pady=8)
+
+        row += 1
+        # Цель мероприятия (многострочное)
+        ctk.CTkLabel(frame, text="Цель мероприятия:", font=("Arial", 14),
+                    text_color=COLOR_TEXT).grid(row=row, column=0, sticky="ne", pady=8, padx=(0, 15))
+        self.text_goal = ctk.CTkTextbox(frame, height=80, width=450, font=("Arial", 13))
+        self.text_goal.grid(row=row, column=1, sticky="w", pady=8)
+
+        row += 1
+        # Кнопки Сохранить / Отмена
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
         btn_frame.grid(row=row, column=0, columnspan=2, pady=25)
         ctk.CTkButton(btn_frame, text="Сохранить", command=self._save,
-                      fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY,
-                      width=120, height=40, font=ctk.CTkFont(size=14)).pack(side="left", padx=10)
+                    fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY,
+                    width=120, height=40, font=("Arial", 14)).pack(side="left", padx=10)
         ctk.CTkButton(btn_frame, text="Отмена", command=self.on_back,
-                      fg_color="transparent", hover_color="#3A3450",
-                      width=120, height=40, font=ctk.CTkFont(size=14)).pack(side="left", padx=10)
+                    fg_color="transparent", hover_color="#3A3450",
+                    width=120, height=40, font=("Arial", 14)).pack(side="left", padx=10)
 
     def show_calendar_dropdown(self, event):
         current = None
@@ -813,28 +953,39 @@ class PlanEditFrame(ctk.CTkFrame):
             self.on_back()
             return
 
-        self.entry_title.insert(0, plan[1])
-        if plan[2]:
-            self.set_date(plan[2])
-        if plan[3]:
-            parts = str(plan[3]).split(':')
+        self.entry_title.insert(0, plan["title"])
+        if plan["event_date"]:
+            try:
+                event_date = datetime.strptime(plan["event_date"], "%Y-%m-%d").date()
+                self.set_date(event_date)
+            except:
+                pass
+        if plan.get("event_time"):
+            parts = plan["event_time"].split(':')
             if len(parts) >= 2:
                 self.start_hour_entry.delete(0, "end")
                 self.start_hour_entry.insert(0, f"{int(parts[0]):02d}")
                 self.start_minute_entry.delete(0, "end")
                 self.start_minute_entry.insert(0, f"{int(parts[1]):02d}")
-        if plan[11]:
-            parts = str(plan[11]).split(':')
+        if plan.get("event_end_time"):
+            parts = plan["event_end_time"].split(':')
             if len(parts) >= 2:
                 self.end_hour_entry.delete(0, "end")
                 self.end_hour_entry.insert(0, f"{int(parts[0]):02d}")
                 self.end_minute_entry.delete(0, "end")
                 self.end_minute_entry.insert(0, f"{int(parts[1]):02d}")
 
-        self.location_box.set(plan[4] or "")
-        self.text_description.insert("0.0", plan[5] or "")
-        self.category_box.set(plan[12] or "")
-        self.entry_audience.insert(0, plan[7] or "")
+        self.location_box.set(plan.get("location", "") or "")
+        self.text_description.insert("0.0", plan.get("description", "") or "")
+        self.category_box.set(plan.get("category", "") or "")
+        self.participants_entry.insert(0, plan.get("participants_count", "0"))
+        self.text_goal.insert("0.0", plan.get("goal", "") or "")
+        
+        # Новые поля
+        self.format_combo.set(plan.get("format_type", "Очный") or "Очный")
+        self.entry_speaker.insert(0, plan.get("speaker", "") or "")
+        self.entry_audience.insert(0, plan.get("audience", "") or "")
+        self.entry_organizer.insert(0, plan.get("organizer", "") or "")
 
     def _save(self):
         title = self.entry_title.get().strip()
@@ -857,11 +1008,26 @@ class PlanEditFrame(ctk.CTkFrame):
         location = self.location_box.get() or None
         category = self.category_box.get() or None
         description = self.text_description.get("0.0", "end").strip() or None
+        goal = self.text_goal.get("0.0", "end").strip() or None
+        participants_count = self.participants_entry.get().strip()
+        try:
+            participants_count = int(participants_count) if participants_count else 0
+        except:
+            participants_count = 0
+
+        # Новые поля
+        speaker = self.entry_speaker.get().strip() or None
         audience = self.entry_audience.get().strip() or None
+        organizer = self.entry_organizer.get().strip() or None
+        format_type = self.format_combo.get().strip() or None
 
         if self.plan_id:
-            success = update_event_plan(self.plan_id, title, event_date, start_time, end_time,
-                                        location, description, None, audience, category)
+            success = update_event_plan(
+                self.plan_id, title, event_date, start_time, end_time,
+                location, description, speaker, audience, category,
+                participants_count=participants_count, goal=goal,
+                organizer=organizer, format_type=format_type
+            )
             if success:
                 show_centered_dialog(self, "Успех", "План обновлён", "success")
                 self.on_back()
@@ -871,8 +1037,12 @@ class PlanEditFrame(ctk.CTkFrame):
             if not self.user_data:
                 show_centered_dialog(self, "Ошибка", "Неизвестный пользователь", "error")
                 return
-            new_id = create_event_plan(title, event_date, start_time, end_time,
-                                       location, description, None, audience, category, self.user_data["id"])
+            new_id = create_event_plan(
+                title, event_date, start_time, end_time,
+                location, description, speaker, audience, category,
+                self.user_data["id"], participants_count=participants_count, goal=goal,
+                organizer=organizer, format_type=format_type
+            )
             if new_id:
                 show_centered_dialog(self, "Успех", "План создан", "success")
                 self.on_back()
@@ -894,10 +1064,10 @@ class PlansViewFrame(ctk.CTkFrame):
         top_frame.pack(fill="x", padx=20, pady=(20, 10))
         back_btn = ctk.CTkButton(top_frame, text="← На главную", command=on_back_to_dashboard,
                                  fg_color="transparent", text_color=COLOR_SECONDARY,
-                                 font=ctk.CTkFont(size=14), hover_color="#3A3450")
+                                 font=("Arial", 14), hover_color="#3A3450")
         back_btn.pack(side="left")
         ctk.CTkLabel(top_frame, text="Список планов мероприятий",
-                     font=ctk.CTkFont(size=20, weight="bold"), text_color=COLOR_PRIMARY).pack(side="left", padx=20)
+                     font=("Arial", 20, "bold"), text_color=COLOR_PRIMARY).pack(side="left", padx=20)
         new_btn = ctk.CTkButton(top_frame, text="+ Новый план", command=self.new_plan,
                                 fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY)
         new_btn.pack(side="right")
@@ -916,13 +1086,13 @@ class PlansViewFrame(ctk.CTkFrame):
             lbl.pack(pady=20)
             return
         for plan in plans:
-            plan_id = plan[0]
-            title = plan[1]
-            event_date = plan[2]
-            start_time = plan[3] or ""
-            end_time = plan[4] or ""
-            location = plan[5] or ""
-            description = plan[6] or ""
+            plan_id = int(plan["id"])
+            title = plan["title"]
+            event_date = datetime.fromisoformat(plan["event_date"]) if plan["event_date"] else None
+            start_time = plan["event_time"] or ""
+            end_time = plan["event_end_time"] or ""
+            location = plan["location"] or ""
+            description = plan["description"] or ""
 
             card = ctk.CTkFrame(self.scrollable, fg_color=COLOR_CARD, corner_radius=10)
             card.pack(fill="x", pady=5, padx=5)
@@ -930,7 +1100,7 @@ class PlansViewFrame(ctk.CTkFrame):
             info_frame = ctk.CTkFrame(card, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
 
-            ctk.CTkLabel(info_frame, text=title, font=ctk.CTkFont(size=16, weight="bold"),
+            ctk.CTkLabel(info_frame, text=title, font=("Arial", 16, "bold"),
                          text_color=COLOR_PRIMARY).pack(anchor="w")
             date_str = event_date.strftime("%d.%m.%Y") if event_date else "дата не указана"
             time_str = f"{start_time} - {end_time}" if start_time or end_time else ""
@@ -977,10 +1147,10 @@ class MainAppFrame(ctk.CTkFrame):
         self.top_nav = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.top_nav.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(self.top_nav, text="Генератор новостей",
-                     font=ctk.CTkFont(size=20, weight="bold"), text_color=COLOR_PRIMARY).pack(side="left")
+                     font=("Arial", 20, "bold"), text_color=COLOR_PRIMARY).pack(side="left")
         self.profile_btn = ctk.CTkButton(self.top_nav, text="👤", width=40, height=40,
                                          fg_color="transparent", text_color=COLOR_TEXT,
-                                         font=ctk.CTkFont(size=20),
+                                         font=("Arial", 20),
                                          command=lambda: self.show_profile_menu(self.profile_btn))
         self.profile_btn.pack(side="right", padx=(0, 5))
 
@@ -1002,27 +1172,27 @@ class MainAppFrame(ctk.CTkFrame):
         self.upcoming_frame = ctk.CTkFrame(self.grid_frame, fg_color=COLOR_CARD, corner_radius=15)
         self.upcoming_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
         ctk.CTkLabel(self.upcoming_frame, text="📋 Ближайшие планы",
-                     font=ctk.CTkFont(size=16, weight="bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
+                     font=("Arial", 16, "bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
         self.upcoming_list_frame = ctk.CTkFrame(self.upcoming_frame, fg_color="transparent")
         self.upcoming_list_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         self.quick_gen_frame = ctk.CTkFrame(self.grid_frame, fg_color=COLOR_CARD, corner_radius=15)
         self.quick_gen_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
         ctk.CTkLabel(self.quick_gen_frame, text="✨ Быстрая генерация",
-                     font=ctk.CTkFont(size=16, weight="bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
+                     font=("Arial", 16, "bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
         self.quick_plan_combo = ctk.CTkComboBox(self.quick_gen_frame, values=["Загрузка..."],
                                                 state="readonly", fg_color="#3A3450", button_color=COLOR_PRIMARY)
         self.quick_plan_combo.pack(fill="x", padx=15, pady=(5, 10))
         self.generate_btn = ctk.CTkButton(self.quick_gen_frame, text="🚀 СГЕНЕРИРОВАТЬ НОВОСТЬ",
                                           command=self.quick_generate, height=40,
                                           fg_color=COLOR_PRIMARY, hover_color=COLOR_SECONDARY,
-                                          font=ctk.CTkFont(size=14, weight="bold"))
+                                          font=("Arial", 14, "bold"))
         self.generate_btn.pack(fill="x", padx=15, pady=10)
 
         self.recent_frame = ctk.CTkFrame(self.main_frame, fg_color=COLOR_CARD, corner_radius=15)
         self.recent_frame.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(self.recent_frame, text="🗞️ Последние сгенерированные новости",
-                     font=ctk.CTkFont(size=16, weight="bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
+                     font=("Arial", 16, "bold"), text_color=COLOR_PRIMARY).pack(anchor="w", padx=15, pady=(15, 5))
         self.recent_news_list = ctk.CTkScrollableFrame(self.recent_frame, fg_color="transparent", height=150)
         self.recent_news_list.pack(fill="both", expand=True, padx=15, pady=(0, 10))
         all_news_btn = ctk.CTkButton(self.recent_frame, text="Все новости →", command=self.show_saved_news,
@@ -1032,10 +1202,10 @@ class MainAppFrame(ctk.CTkFrame):
         self.status_bar = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.status_bar.pack(fill="x", pady=(10, 0))
         self.status_label = ctk.CTkLabel(self.status_bar, text="🟢 Нейросеть активна и готова к работе",
-                                         font=ctk.CTkFont(size=12), text_color=COLOR_SECONDARY)
+                                         font=("Arial", 12), text_color=COLOR_SECONDARY)
         self.status_label.pack(side="left")
         self.about_label = ctk.CTkLabel(self.status_bar, text="О программе",
-                                        font=ctk.CTkFont(size=12, underline=True),
+                                        font=("Arial", 12, "underline"),
                                         text_color=COLOR_GRAY, cursor="hand2")
         self.about_label.pack(side="right", padx=(0, 10))
         self.about_label.bind("<Button-1>", self.show_about_popup)
@@ -1052,12 +1222,10 @@ class MainAppFrame(ctk.CTkFrame):
         future_limit = today + timedelta(days=14)
         upcoming = []
         for plan in all_plans:
-            plan_date = plan[2] if len(plan) > 2 and plan[2] else None
-            if plan_date and isinstance(plan_date, (date, datetime)):
-                if isinstance(plan_date, datetime):
-                    plan_date = plan_date.date()
+            if plan["event_date"]:
+                plan_date = datetime.fromisoformat(plan["event_date"]).date()
                 if today <= plan_date <= future_limit:
-                    upcoming.append((plan_date, plan[1], plan[0]))
+                    upcoming.append((plan_date, plan["title"], int(plan["id"])))
         upcoming.sort(key=lambda x: x[0])
         if not upcoming:
             lbl = ctk.CTkLabel(self.upcoming_list_frame, text="Нет запланированных мероприятий на ближайшие 14 дней",
@@ -1080,7 +1248,7 @@ class MainAppFrame(ctk.CTkFrame):
         else:
             for _, text, gen_date, _ in news_list:
                 short_text = text[:100] + "..." if len(text) > 100 else text
-                lbl = ctk.CTkLabel(self.recent_news_list, text=f"• {short_text} ({gen_date.strftime('%d.%m.%Y')})",
+                lbl = ctk.CTkLabel(self.recent_news_list, text=f"• {short_text} ({gen_date})",
                                    text_color=COLOR_TEXT, anchor="w")
                 lbl.pack(anchor="w", pady=2)
 
@@ -1090,7 +1258,7 @@ class MainAppFrame(ctk.CTkFrame):
             self.quick_plan_combo.configure(values=["Нет доступных планов"])
             self.quick_plan_combo.set("Нет доступных планов")
             return
-        plan_display = [f"{p[0]} - {p[1]} ({p[2]})" for p in plans]
+        plan_display = [f"{p['id']} - {p['title']} ({p['event_date']})" for p in plans]
         self.quick_plan_combo.configure(values=plan_display)
         self.quick_plan_combo.set(plan_display[0])
 
@@ -1154,10 +1322,10 @@ class MainAppFrame(ctk.CTkFrame):
 
             btn = ctk.CTkButton(btn_frame, text=text, command=cmd,
                                 fg_color="transparent", hover_color="#3A3450",
-                                anchor="w", height=32, font=ctk.CTkFont(size=12))
+                                anchor="w", height=32, font=("Arial", 12))
             btn.pack(side="left", fill="x", expand=True)
 
-            icon_label = ctk.CTkLabel(btn_frame, text=icon, font=ctk.CTkFont(size=12),
+            icon_label = ctk.CTkLabel(btn_frame, text=icon, font=("Arial", 12),
                                       text_color=COLOR_TEXT, width=25)
             icon_label.pack(side="right", padx=(0, 3))
             icon_label.bind("<Button-1>", lambda e, c=cmd: c())
@@ -1237,8 +1405,70 @@ class MainAppFrame(ctk.CTkFrame):
         self.parent.show_login()
 
     def exit_app(self):
-        close_all_connections()
         self.parent.quit()
+
+# ---------- ВСПЛЫВАЮЩЕЕ ОКНО "О ПРОГРАММЕ" ----------
+class AboutPopup(ctk.CTkToplevel):
+    def __init__(self, parent, anchor_widget):
+        super().__init__(parent)
+        self.anchor_widget = anchor_widget
+        self.overrideredirect(True)
+        self.attributes('-topmost', True)
+        self.configure(fg_color=COLOR_BG)
+
+        frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=12,
+                             border_width=2, border_color="white")
+        frame.pack(fill="both", expand=True, padx=8, pady=8)
+
+        ctk.CTkLabel(frame, text="ℹ️ О программе", font=("Arial", 13, "bold"),
+                     text_color=COLOR_PRIMARY).pack(anchor="w", padx=12, pady=(6, 2))
+        ctk.CTkLabel(frame, text="Автор: Головатый И.Н.", font=("Arial", 11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Группа: Идс23Б", font=("Arial", 11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Год: 2026", font=("Arial", 11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Версия: 1.0", font=("Arial", 11),
+                     text_color=COLOR_TEXT, anchor="w").pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(frame, text="Генератор новостей на основе нейросети ruGPT-3",
+                     font=("Arial", 10), text_color=COLOR_GRAY, wraplength=220).pack(anchor="w", padx=12, pady=(6, 6))
+
+        self.update_idletasks()
+        popup_width = self.winfo_width()
+        popup_height = self.winfo_height()
+
+        anchor_x = anchor_widget.winfo_rootx()
+        anchor_y = anchor_widget.winfo_rooty()
+        anchor_width = anchor_widget.winfo_width()
+        anchor_height = anchor_widget.winfo_height()
+
+        anchor_right = anchor_x + anchor_width
+        anchor_top = anchor_y
+
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+
+        offset = 10
+        x = anchor_right - popup_width - offset
+        y = anchor_top
+
+        if x + popup_width > parent_x + parent_width:
+            x = parent_x + parent_width - popup_width - 5
+        if x < parent_x + 5:
+            x = parent_x + 5
+        if y + popup_height > parent_y + parent_height:
+            y = anchor_top - popup_height
+        if y < parent_y + 5:
+            y = parent_y + 5
+
+        self.geometry(f"{popup_width}x{popup_height}+{int(x)}+{int(y)}")
+
+        self.focus_set()
+        self.bind("<FocusOut>", lambda e: self.destroy())
+        parent.bind("<Button-1>", lambda e: self.destroy(), add=True)
+        self.bind("<Escape>", lambda e: self.destroy())
 
 # ---------- ГЛАВНОЕ ОКНО ----------
 class MainWindow(ctk.CTk):
@@ -1250,12 +1480,12 @@ class MainWindow(ctk.CTk):
         self.resizable(True, True)
         self.configure(fg_color=COLOR_BG)
 
-        if not init_connection_pool():
-            show_centered_dialog(self, "Ошибка", "Не удалось подключиться к базе данных", "error")
-            self.destroy()
-            return
+        # Инициализируем администратора при первом запуске
+        init_admin_user()
 
-        self.news_generator = get_news_generator()
+        # Путь к базовой модели (или любой другой, которая загружается по умолчанию)
+        default_model = "./ruGPT3medium_based_on_gpt2"
+        self.news_generator = get_news_generator(default_model)
         if self.news_generator is None:
             self.destroy()
             return
@@ -1391,7 +1621,6 @@ class MainWindow(ctk.CTk):
         self.current_frame.pack(fill="both", expand=True)
 
     def on_closing(self):
-        close_all_connections()
         self.destroy()
 
 if __name__ == "__main__":

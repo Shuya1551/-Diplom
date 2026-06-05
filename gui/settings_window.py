@@ -4,7 +4,7 @@
 
 import customtkinter as ctk
 from tkinter import filedialog
-from repositories.settings_repository import get_setting, set_setting
+from services.file_storage import get_setting, set_setting
 from utils import show_centered_dialog
 
 COLOR_PRIMARY = "#6C63FF"
@@ -59,11 +59,13 @@ class SettingsWindow(ctk.CTkFrame):
         self.load_settings()
 
     def create_generation_tab(self):
+        # Путь к модели
         ctk.CTkLabel(self.generation_tab, text="Путь к модели (локальный):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(15, 0))
         self.model_path_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.model_path_var, width=400).pack(anchor="w", padx=15, pady=5)
 
+        # Температура
         ctk.CTkLabel(self.generation_tab, text="Температура (0.1 – 1.0):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.temperature_var = ctk.StringVar()
@@ -84,27 +86,32 @@ class SettingsWindow(ctk.CTkFrame):
             self.temp_label.configure(text=f"{value:.2f}")
         temp_scale.configure(command=on_scale_change)
 
+        # Макс. новых токенов
         ctk.CTkLabel(self.generation_tab, text="Макс. длина новости (токенов):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.max_tokens_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.max_tokens_var, width=100).pack(anchor="w", padx=15, pady=5)
 
+        # Top-k
         ctk.CTkLabel(self.generation_tab, text="Top-k (1-100):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.top_k_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.top_k_var, width=100).pack(anchor="w", padx=15, pady=5)
 
+        # Top-p
         ctk.CTkLabel(self.generation_tab, text="Top-p (0.0-1.0):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.top_p_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.top_p_var, width=100).pack(anchor="w", padx=15, pady=5)
 
+        # repetition_penalty
         ctk.CTkLabel(self.generation_tab, text="Штраф за повторения (1.0-2.0):",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.rep_penalty_var = ctk.StringVar()
         ctk.CTkEntry(self.generation_tab, textvariable=self.rep_penalty_var, width=100).pack(anchor="w", padx=15, pady=5)
 
     def create_export_tab(self):
+        # Папка по умолчанию
         ctk.CTkLabel(self.export_tab, text="Папка для экспорта по умолчанию:",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(15, 0))
         dir_frame = ctk.CTkFrame(self.export_tab, fg_color="transparent")
@@ -113,17 +120,20 @@ class SettingsWindow(ctk.CTkFrame):
         ctk.CTkEntry(dir_frame, textvariable=self.export_dir_var, width=300).pack(side="left", padx=(0, 5))
         ctk.CTkButton(dir_frame, text="Обзор...", command=self.browse_export_dir, width=80).pack(side="left")
 
+        # Формат по умолчанию
         ctk.CTkLabel(self.export_tab, text="Формат по умолчанию:",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.default_format_combo = ctk.CTkComboBox(self.export_tab, values=["docx", "xlsx"], width=100, state="readonly")
         self.default_format_combo.pack(anchor="w", padx=15, pady=5)
 
     def create_window_tab(self):
+        # Разрешение окна
         ctk.CTkLabel(self.window_tab, text="Разрешение окна:",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(15, 0))
         self.resolution_combo = ctk.CTkComboBox(self.window_tab, values=["1000x700", "800x600", "1200x800", "1400x900", "Полноэкранный"], width=150, state="readonly")
         self.resolution_combo.pack(anchor="w", padx=15, pady=5)
 
+        # Режим отображения
         ctk.CTkLabel(self.window_tab, text="Режим отображения:",
                      font=ctk.CTkFont(size=13), text_color=COLOR_TEXT).pack(anchor="w", padx=15, pady=(10, 0))
         self.mode_combo = ctk.CTkComboBox(self.window_tab, values=["Обычный", "Развёрнуто на весь экран", "На весь экран (F11)"], width=150, state="readonly")

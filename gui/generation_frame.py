@@ -5,11 +5,9 @@
 import customtkinter as ctk
 from functools import partial
 
-from repositories.event_plan_repository import get_all_event_plans
-from repositories.generated_news_repository import get_all_generated_news, delete_generated_news
+from services.file_storage import get_all_event_plans, get_all_generated_news, delete_generated_news
 from utils import show_centered_dialog
 
-# ---------- ЦВЕТА ----------
 COLOR_PRIMARY = "#6C63FF"
 COLOR_BG = "#1E1A2E"
 COLOR_CARD = "#2A2438"
@@ -64,13 +62,13 @@ class GenerationFrame(ctk.CTkFrame):
             lbl.pack(pady=20)
             return
         for plan in plans:
-            plan_id = plan[0]
-            title = plan[1]
-            event_date = plan[2]
-            start_time = plan[3] or ""
-            end_time = plan[4] or ""
-            location = plan[5] or ""
-            description = plan[6] or ""
+            plan_id = int(plan["id"])
+            title = plan["title"]
+            event_date = plan["event_date"]
+            start_time = plan["event_time"] or ""
+            end_time = plan["event_end_time"] or ""
+            location = plan["location"] or ""
+            description = plan["description"] or ""
 
             card = ctk.CTkFrame(self.plans_list, fg_color=COLOR_CARD, corner_radius=10)
             card.pack(fill="x", pady=5, padx=5)
@@ -80,7 +78,7 @@ class GenerationFrame(ctk.CTkFrame):
 
             ctk.CTkLabel(info_frame, text=title, font=ctk.CTkFont(size=16, weight="bold"),
                          text_color=COLOR_PRIMARY).pack(anchor="w")
-            date_str = event_date.strftime("%d.%m.%Y") if event_date else "дата не указана"
+            date_str = event_date if event_date else "дата не указана"
             time_str = f"{start_time} - {end_time}" if start_time or end_time else ""
             details = f"{date_str}  {time_str}  •  {location}" if location else f"{date_str}  {time_str}"
             ctk.CTkLabel(info_frame, text=details, text_color=COLOR_GRAY).pack(anchor="w", pady=(2, 2))
@@ -106,13 +104,14 @@ class GenerationFrame(ctk.CTkFrame):
             lbl.pack(anchor="w", pady=5)
             return
         for news in news_list:
-            news_id = news[0]
-            text = news[1]
-            gen_date = news[2]
-            approved = news[3]
-            rating = news[4]
-            plan_id = news[5]
-            plan_title = news[6] if len(news) > 6 else f"План #{plan_id}"
+            news_id = int(news["id"])
+            text = news["generated_text"]
+            gen_date = news["generation_date"]
+            approved = news["is_approved"] == "True"
+            rating = news["rating"]
+            plan_id = int(news["event_plan_id"])
+            plan = get_all_event_plans()
+            plan_title = next((p["title"] for p in plan if int(p["id"]) == plan_id), f"План #{plan_id}")
 
             card = ctk.CTkFrame(self.news_list, fg_color=COLOR_CARD, corner_radius=8)
             card.pack(fill="x", pady=5, padx=5)

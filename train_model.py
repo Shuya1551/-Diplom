@@ -1,134 +1,136 @@
-# train_model.py
 """
-Скрипт для дообучения ruGPT-3 Medium локально (VS Code).
-Требования: установлены библиотеки transformers, torch, datasets, pandas.
-Для ускорения желательно наличие GPU (CUDA).
+train_model.py
+Дообучение ruGPT-3 Medium на датасете advanced_dataset.jsonl
+Формат датасета: {"prompt": "...", "completion": "..."}
+Промпт содержит поля с точками в конце, завершается словом "Новость:".
 """
 
 import os
-import sys
-import argparse
-import pandas as pd
 import torch
 from transformers import (
     GPT2LMHeadModel,
-    GPT2Tokenizer,
+    GPT2TokenizerFast,
     TrainingArguments,
     Trainer,
     DataCollatorForLanguageModeling
 )
 from datasets import Dataset
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Fine-tune ruGPT-3 Medium for news generation")
-    parser.add_argument("--data_file", type=str, default="train_data.csv", 
-                        help="Path to CSV file with columns 'input_text' and 'output_text'")
-    parser.add_argument("--output_dir", type=str, default="./finetuned_rugpt3", 
-                        help="Directory to save fine-tuned model")
-    parser.add_argument("--model_name", type=str, default="sberbank-ai/rugpt3medium_based_on_gpt2", 
-                        help="Base model name")
-    parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=2, help="Per device batch size (reduce if OOM)")
-    parser.add_argument("--grad_accum", type=int, default=2, help="Gradient accumulation steps")
-    parser.add_argument("--max_length", type=int, default=128, help="Max token length for truncation/padding")
-    parser.add_argument("--learning_rate", type=float, default=5e-5, help="Learning rate")
-    parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
-    return parser.parse_args()
-
-def create_prompt_and_response(row):
-    """Формирует строку для обучения: 'input_text + Новость: + output_text'"""
-    prompt = row['input_text'] + " Новость:"
-    full_text = prompt + " " + row['output_text']
-    return full_text
-
 def main():
-    args = parse_args()
+    # ================== ПУТИ И ПАРАМЕТРЫ ==================
+    MODEL_PATH = "./ruGPT3medium_based_on_gpt2"   # путь к исходной модели
+    DATASET_FILE = "advanced_dataset.jsonl"       # сгенерированный датасет
+    OUTPUT_DIR = "./ruGPT3_finetuned_advanced"    # папка для сохранения дообученной модели
     
-    # Проверка наличия файла данных
-    if not os.path.exists(args.data_file):
-        print(f"Ошибка: файл данных {args.data_file} не найден.")
-        sys.exit(1)
-    
-    # Определение устройства
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Используется устройство: {device}")
-    if device.type == "cpu":
-        print("ВНИМАНИЕ: Обучение на CPU будет очень медленным. Рекомендуется использовать GPU (CUDA).")
-        print("Если у вас нет GPU, рассмотрите уменьшение batch_size и max_length.")
-    
-    # Загрузка датасета
-    print(f"Загрузка данных из {args.data_file}...")
-    df = pd.read_csv(args.data_file)
-    if not {'input_text', 'output_text'}.issubset(df.columns):
-        print("Ошибка: CSV файл должен содержать колонки 'input_text' и 'output_text'.")
-        sys.exit(1)
-    
-    # Формирование текстов для обучения
-    df['text'] = df.apply(create_prompt_and_response, axis=1)
-    print(f"Загружено {len(df)} примеров. Пример:")
-    print(df['text'].iloc[0][:200] + "...")
-    
-    dataset = Dataset.from_pandas(df[['text']])
-    
-    # Загрузка модели и токенизатора
-    print(f"Загрузка модели {args.model_name}...")
-    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name)
-    model = GPT2LMHeadModel.from_pretrained(args.model_name)
-    
+    # Гиперпараметры
+    EPOCHS = 3                     # Количество полных проходов по датасету
+    BATCH_SIZE = 1                 # Количество примеров за один шаг
+    GRAD_ACCUM = 4                 # Аккумулируем градиенты 4 шага → эффективный батч = 4
+    MAX_LENGTH = 384               # Максимальная длина в токенах
+    LEARNING_RATE = 3e-5           # Скорость обучения (3*10^-5)
+    WARMUP_STEPS = 100             # Шаги прогрева (learning_rate плавно возрастает)
+    LOGGING_STEPS = 50             # Каждые 50 шагов выводим loss (функция потерь) в консоль
+    SAVE_STEPS = 500               # Каждые 500 шагов сохраняем промежуточную модель
+
+    # ================== ЗАГРУЗКА ДАТАСЕТА ==================
+    if not os.path.exists(DATASET_FILE):
+        raise FileNotFoundError(f"Датасет {DATASET_FILE} не найден.")
+    print(f"📥 Загрузка датасета из {DATASET_FILE}...")
+    dataset = Dataset.from_json(DATASET_FILE)
+    print(f"✅ Загружено {len(dataset)} примеров.")
+
+    # ================== ТОКЕНИЗАТОР ==================
+    print("🔧 Загрузка токенизатора...")
+    tokenizer = GPT2TokenizerFast.from_pretrained(MODEL_PATH)
+    # заполняет пустые места в тексте, чтобы модель могла обработать целый пакет за раз
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
-    # Токенизация
+
+    # ================== ФУНКЦИЯ ТОКЕНИЗАЦИИ ==================
     def tokenize_function(examples):
-        tokenized = tokenizer(
-            examples["text"],
-            padding="max_length",
-            truncation=True,
-            max_length=args.max_length,
-            return_tensors="pt"
+        full_texts = [p + " " + c for p, c in zip(examples["prompt"], examples["completion"])]
+        model_inputs = tokenizer(
+            full_texts,
+            truncation=True, #обрезание текста до заданной максимальной длины
+            max_length=MAX_LENGTH,
+            padding="max_length"
         )
-        tokenized["labels"] = tokenized["input_ids"].clone()
-        return tokenized
-    
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
-    tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
-    
-    # Настройки обучения
-    training_args = TrainingArguments(
-        output_dir=args.output_dir,
-        num_train_epochs=args.epochs,
-        per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=args.grad_accum,
-        warmup_steps=args.warmup_steps,
-        learning_rate=args.learning_rate,
-        weight_decay=0.01,
-        logging_dir='./logs',
-        logging_steps=50,
-        save_strategy="epoch",
-        save_total_limit=2,
-        fp16=torch.cuda.is_available(),  # автоматическое использование fp16 если есть GPU
-        report_to="none",
+        model_inputs["labels"] = model_inputs["input_ids"].copy()
+        return model_inputs
+
+    print("⚙️ Токенизация...")
+    tokenized_dataset = dataset.map(
+        tokenize_function,
+        batched=True,
+        remove_columns=dataset.column_names,
+        num_proc=1                     # для Windows
     )
-    
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-    
+    print("✅ Токенизация завершена.")
+
+    # ================== МОДЕЛЬ ==================
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"🤖 Загрузка модели на {device}...")
+    model = GPT2LMHeadModel.from_pretrained(MODEL_PATH)
+    model.to(device)
+    model.gradient_checkpointing_enable()   # экономия памяти
+
+    # ================== НАСТРОЙКИ ОБУЧЕНИЯ ==================
+    # TrainingArguments – главный объект, управляющий процессом обучения
+    training_args = TrainingArguments(
+        output_dir=OUTPUT_DIR,                # куда сохранять чекпоинты
+        num_train_epochs=EPOCHS,              # число эпох
+        per_device_train_batch_size=BATCH_SIZE,   # батч на одно устройство (GPU/CPU)
+        gradient_accumulation_steps=GRAD_ACCUM,   # аккумулируем градиенты, эмулируя больший батч
+        learning_rate=LEARNING_RATE,          # шаг градиентного спуска
+        warmup_steps=WARMUP_STEPS,            # шагов прогрева learning rate
+        logging_steps=LOGGING_STEPS,          # как часто логировать loss
+        save_steps=SAVE_STEPS,                # как часто сохранять промежуточные модели
+        save_total_limit=2,                   # хранить только 2 последних чекпоинта
+        fp16=torch.cuda.is_available(),       # смешанная точность (ускоряет на GPU, поддерживающем fp16)
+        dataloader_num_workers=0,             # число процессов для загрузки данных (0 – основной процесс)
+        report_to="none",                     # не отправлять логи на внешние сервисы
+    )
+
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False) # преобразует батчи в формат, понятный модели
+
     trainer = Trainer(
         model=model,
         args=training_args,
-        data_collator=data_collator,
         train_dataset=tokenized_dataset,
+        data_collator=data_collator,
     )
-    
-    # Обучение
-    print("Начинаем обучение...")
+
+    # ================== ЗАПУСК ОБУЧЕНИЯ ==================
+    print("\n Начало обучения...")
     trainer.train()
-    
-    # Сохранение модели
-    print(f"Сохраняем модель в {args.output_dir}")
-    model.save_pretrained(args.output_dir)
-    tokenizer.save_pretrained(args.output_dir)
-    
-    print("Обучение завершено!")
+
+    # ================== СОХРАНЕНИЕ МОДЕЛИ ==================
+    print(f"\n💾 Сохранение модели в {OUTPUT_DIR}")
+    model.save_pretrained(OUTPUT_DIR)
+    tokenizer.save_pretrained(OUTPUT_DIR)
+    print("✅ Дообучение завершено!")
+
+    # ================== БЫСТРЫЙ ТЕСТ ==================
+    print("\n🧪 Тестовая генерация...")
+    test_model = GPT2LMHeadModel.from_pretrained(OUTPUT_DIR).to(device)
+    test_tokenizer = GPT2TokenizerFast.from_pretrained(OUTPUT_DIR)
+    test_tokenizer.pad_token = test_tokenizer.eos_token
+
+    # Пример промпта
+    test_prompt = "Название мероприятия: Хакатон по искусственному интеллекту. Дата: 15.06.2025. Время: 10:00. Место проведения: Москва. Категория: Хакатон. Описание: Участники создадут прототипы нейросетей. Новость:"
+    inputs = test_tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+    with torch.no_grad():
+        outputs = test_model.generate(
+            inputs.input_ids,
+            max_new_tokens=100,
+            do_sample=True,
+            temperature=0.6,
+            top_p=0.9,
+            repetition_penalty=1.2,
+            pad_token_id=test_tokenizer.eos_token_id
+        )
+    generated = test_tokenizer.decode(outputs[0], skip_special_tokens=True)
+    print(f"Промпт: {test_prompt}\nСгенерировано: {generated}\n")
 
 if __name__ == "__main__":
     main()

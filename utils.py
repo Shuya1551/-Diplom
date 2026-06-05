@@ -123,7 +123,7 @@ def show_centered_dialog(parent, title, message, dialog_type="info", buttons=Non
             cmd = lambda t=btn_text: on_click(t)
             fg = COLOR_PRIMARY
             hover = COLOR_SECONDARY
-        ctk.CTkButton(btn_frame, text=btn_text, width=100, command=cmd,
+        ctk.CTkButton(btn_frame, text=btn_text, width=80, command=cmd,
                       fg_color=fg, hover_color=hover).pack(side="left", padx=5)
 
     dialog.update_idletasks()

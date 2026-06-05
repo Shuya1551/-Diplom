@@ -5,8 +5,7 @@
 import customtkinter as ctk
 from functools import partial
 
-from repositories.user_repository import get_user_by_id, change_password
-from repositories.generated_news_repository import get_news_by_user_id
+from services.file_storage import get_user_by_id, change_password, get_news_by_user_id
 from utils import show_centered_dialog
 import bcrypt
 
@@ -60,7 +59,7 @@ class ProfileFrame(ctk.CTkFrame):
         user = get_user_by_id(self.user_data['id'])
         if not user:
             return
-        info_text = f"Логин: {user['username']}\nEmail: {user['email']}\nРоль: {user['role']}\nЗарегистрирован: {user['created_at']}\nПоследний вход: {user['last_login'] or 'никогда'}"
+        info_text = f"Логин: {user['username']}\nEmail: {user['email']}\nРоль: {'admin' if user['is_admin'] == 'True' else 'user'}\nЗарегистрирован: {user['created_at']}\nПоследний вход: {user['last_login'] or 'никогда'}"
         info_label = ctk.CTkLabel(self.info_frame, text=info_text, font=ctk.CTkFont(size=13),
                                   text_color=COLOR_TEXT, justify="left", anchor="w")
         info_label.pack(anchor="w", padx=15, pady=5)
@@ -74,8 +73,7 @@ class ProfileFrame(ctk.CTkFrame):
                                text_color=COLOR_GRAY)
             lbl.pack(anchor="w", pady=5)
             return
-        for news in news_list:
-            news_id, text, gen_date, approved, rating, plan_title = news
+        for news_id, text, gen_date, approved, rating, plan_title in news_list:
             card = ctk.CTkFrame(self.news_list, fg_color=COLOR_CARD, corner_radius=10)
             card.pack(fill="x", pady=5, padx=5)
 
@@ -96,48 +94,75 @@ class ProfileFrame(ctk.CTkFrame):
     def view_news(self, text, news_id):
         self.parent.switch_to_frame("news_view", news_id=news_id, news_text=text,
                                     on_back_callback=self.return_to_profile)
-
     def return_to_profile(self):
         self.parent.switch_to_frame("profile")
 
     def change_password(self):
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Смена пароля")
-        dialog.geometry("350x250")
-        dialog.transient(self)
-        dialog.grab_set()
+        import tkinter as tk
+        dialog = tk.Toplevel(self)
+        dialog.overrideredirect(True)
+        dialog.attributes('-transparentcolor', 'black')
+        dialog.configure(bg='black')
+        dialog.attributes('-topmost', True)
 
-        ctk.CTkLabel(dialog, text="Старый пароль:", font=ctk.CTkFont(size=13)).pack(pady=5)
-        old_pass = ctk.CTkEntry(dialog, show="*", width=250)
-        old_pass.pack(pady=5)
+        frame = ctk.CTkFrame(dialog, fg_color=COLOR_CARD, corner_radius=15,
+                            border_width=2, border_color="white")
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        ctk.CTkLabel(dialog, text="Новый пароль:", font=ctk.CTkFont(size=13)).pack(pady=5)
-        new_pass = ctk.CTkEntry(dialog, show="*", width=250)
-        new_pass.pack(pady=5)
+        ctk.CTkLabel(frame, text="Смена пароля", font=("Arial", 16, "bold"),
+                    text_color=COLOR_PRIMARY).pack(pady=(15, 10))
 
-        ctk.CTkLabel(dialog, text="Подтверждение:", font=ctk.CTkFont(size=13)).pack(pady=5)
-        confirm_pass = ctk.CTkEntry(dialog, show="*", width=250)
-        confirm_pass.pack(pady=5)
+        ctk.CTkLabel(frame, text="Старый пароль:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=15)
+        old_pass = ctk.CTkEntry(frame, show="*", width=250)
+        old_pass.pack(padx=15, pady=(0, 10), fill="x")
+
+        ctk.CTkLabel(frame, text="Новый пароль:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=15)
+        new_pass = ctk.CTkEntry(frame, show="*", width=250)
+        new_pass.pack(padx=15, pady=(0, 10), fill="x")
+
+        ctk.CTkLabel(frame, text="Подтверждение:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=15)
+        confirm_pass = ctk.CTkEntry(frame, show="*", width=250)
+        confirm_pass.pack(padx=15, pady=(0, 10), fill="x")
+
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(pady=15)
 
         def do_change():
             old = old_pass.get()
             new = new_pass.get()
             confirm = confirm_pass.get()
             if not old or not new:
-                show_centered_dialog(dialog, "Ошибка", "Заполните все поля", "error")
+                show_centered_dialog(frame, "Ошибка", "Заполните все поля", "error")
                 return
             if new != confirm:
-                show_centered_dialog(dialog, "Ошибка", "Новые пароли не совпадают", "error")
+                show_centered_dialog(frame, "Ошибка", "Новые пароли не совпадают", "error")
                 return
             user = get_user_by_id(self.user_data['id'])
-            if not user or not bcrypt.checkpw(old.encode(), user['password_hash'].encode()):
-                show_centered_dialog(dialog, "Ошибка", "Неверный старый пароль", "error")
+            if not user or not bcrypt.checkpw(old.encode(), user["password_hash"].encode()):
+                show_centered_dialog(frame, "Ошибка", "Неверный старый пароль", "error")
                 return
             new_hash = bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode()
             if change_password(self.user_data['id'], new_hash):
-                show_centered_dialog(dialog, "Успех", "Пароль изменён", "success")
+                show_centered_dialog(frame, "Успех", "Пароль изменён", "success")
                 dialog.destroy()
             else:
-                show_centered_dialog(dialog, "Ошибка", "Не удалось изменить пароль", "error")
+                show_centered_dialog(frame, "Ошибка", "Не удалось изменить пароль", "error")
 
-        ctk.CTkButton(dialog, text="Сохранить", command=do_change, fg_color=COLOR_PRIMARY).pack(pady=10)
+        ctk.CTkButton(btn_frame, text="Сохранить", command=do_change, fg_color=COLOR_PRIMARY, width=100).pack(side="left", padx=10)
+        ctk.CTkButton(btn_frame, text="Отмена", command=dialog.destroy, fg_color="transparent", width=100).pack(side="left", padx=10)
+
+        dialog.update_idletasks()
+        req_w = frame.winfo_reqwidth() + 20
+        req_h = frame.winfo_reqheight() + 20
+        req_w = max(350, min(500, req_w))
+        req_h = max(250, req_h)
+
+        parent_x = self.winfo_rootx()
+        parent_y = self.winfo_rooty()
+        parent_w = self.winfo_width()
+        parent_h = self.winfo_height()
+        x = parent_x + (parent_w - req_w) // 2
+        y = parent_y + (parent_h - req_h) // 2
+        dialog.geometry(f"{req_w}x{req_h}+{x}+{y}")
+        dialog.focus_set()
+        dialog.grab_set()
